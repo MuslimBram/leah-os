@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { PageHeader } from "@/components/leah/AppShell";
@@ -27,8 +27,6 @@ const EXAMPLES = [
 
 function PlannerPage() {
   const call = useServerFn(planRequest);
-  const router = useRouter();
-  void router;
   const [input, setInput] = useState("Dua një aplikacion si Airbnb me pagesa dhe harta");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
