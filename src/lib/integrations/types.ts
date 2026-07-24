@@ -15,6 +15,8 @@ export type IntegrationCategory =
   | "deployment"
   | "memory"
   | "research"
+  | "observability"
+  | "local-model"
   | "other";
 
 export type IntegrationCapability =
@@ -26,6 +28,10 @@ export type IntegrationCapability =
   | "deploy"
   | "scrape"
   | "embed"
+  | "test"
+  | "document"
+  | "monitor"
+  | "trace"
   | "chat";
 
 export type IntegrationStatus = "stable" | "beta" | "experimental" | "planned";
