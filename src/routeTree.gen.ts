@@ -17,6 +17,7 @@ import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as PlannerRouteImport } from './routes/planner'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
+import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as GithubRouteImport } from './routes/github'
 import { Route as DeploymentRouteImport } from './routes/deployment'
 import { Route as CostRouteImport } from './routes/cost'
@@ -62,6 +63,11 @@ const MarketplaceRoute = MarketplaceRouteImport.update({
   path: '/marketplace',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IntegrationsRoute = IntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GithubRoute = GithubRouteImport.update({
   id: '/github',
   path: '/github',
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/github': typeof GithubRoute
+  '/integrations': typeof IntegrationsRoute
   '/marketplace': typeof MarketplaceRoute
   '/memory': typeof MemoryRoute
   '/planner': typeof PlannerRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/github': typeof GithubRoute
+  '/integrations': typeof IntegrationsRoute
   '/marketplace': typeof MarketplaceRoute
   '/memory': typeof MemoryRoute
   '/planner': typeof PlannerRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/github': typeof GithubRoute
+  '/integrations': typeof IntegrationsRoute
   '/marketplace': typeof MarketplaceRoute
   '/memory': typeof MemoryRoute
   '/planner': typeof PlannerRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/deployment'
     | '/github'
+    | '/integrations'
     | '/marketplace'
     | '/memory'
     | '/planner'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/deployment'
     | '/github'
+    | '/integrations'
     | '/marketplace'
     | '/memory'
     | '/planner'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/deployment'
     | '/github'
+    | '/integrations'
     | '/marketplace'
     | '/memory'
     | '/planner'
@@ -176,6 +188,7 @@ export interface RootRouteChildren {
   CostRoute: typeof CostRoute
   DeploymentRoute: typeof DeploymentRoute
   GithubRoute: typeof GithubRoute
+  IntegrationsRoute: typeof IntegrationsRoute
   MarketplaceRoute: typeof MarketplaceRoute
   MemoryRoute: typeof MemoryRoute
   PlannerRoute: typeof PlannerRoute
@@ -244,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/integrations': {
+      id: '/integrations'
+      path: '/integrations'
+      fullPath: '/integrations'
+      preLoaderRoute: typeof IntegrationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/github': {
       id: '/github'
       path: '/github'
@@ -280,6 +300,7 @@ const rootRouteChildren: RootRouteChildren = {
   CostRoute: CostRoute,
   DeploymentRoute: DeploymentRoute,
   GithubRoute: GithubRoute,
+  IntegrationsRoute: IntegrationsRoute,
   MarketplaceRoute: MarketplaceRoute,
   MemoryRoute: MemoryRoute,
   PlannerRoute: PlannerRoute,
