@@ -5,7 +5,7 @@ export const langgraphPlugin: IntegrationPlugin = {
   name: "LangGraph",
   vendor: "LangChain",
   category: "automation",
-  capabilities: ["plan", "run-workflow"],
+  capabilities: ["plan", "run-workflow", "deploy"],
   status: "beta",
   description: "Truri i Leah — graf state-machines për agjentë.",
   configSchema: [

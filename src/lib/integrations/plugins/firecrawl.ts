@@ -5,7 +5,7 @@ export const firecrawlPlugin: IntegrationPlugin = {
   name: "Firecrawl",
   vendor: "Firecrawl",
   category: "research",
-  capabilities: ["scrape"],
+  capabilities: ["scrape", "document"],
   status: "stable",
   description: "Scrape docs & sites, kthen markdown të pastër për Memory.",
   docsUrl: "https://firecrawl.dev",

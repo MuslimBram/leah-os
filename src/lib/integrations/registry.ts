@@ -21,6 +21,14 @@ import { windsurfPlugin } from "./plugins/windsurf";
 import { firecrawlPlugin } from "./plugins/firecrawl";
 import { qdrantPlugin } from "./plugins/qdrant";
 import { lovableAiPlugin } from "./plugins/lovable-ai";
+import { langfusePlugin } from "./plugins/langfuse";
+import { sentryPlugin } from "./plugins/sentry";
+import { grafanaPlugin } from "./plugins/grafana";
+import { weaviatePlugin } from "./plugins/weaviate";
+import { ollamaPlugin } from "./plugins/ollama";
+import { typedocPlugin } from "./plugins/typedoc";
+import { vitestPlugin } from "./plugins/vitest";
+import { playwrightPlugin } from "./plugins/playwright";
 
 const BUILT_IN_PLUGINS: IntegrationPlugin[] = [
   lovableAiPlugin,
@@ -32,6 +40,14 @@ const BUILT_IN_PLUGINS: IntegrationPlugin[] = [
   windsurfPlugin,
   firecrawlPlugin,
   qdrantPlugin,
+  weaviatePlugin,
+  ollamaPlugin,
+  langfusePlugin,
+  sentryPlugin,
+  grafanaPlugin,
+  typedocPlugin,
+  vitestPlugin,
+  playwrightPlugin,
 ];
 
 const runtime = new Map<string, IntegrationPlugin>(

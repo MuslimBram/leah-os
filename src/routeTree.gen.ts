@@ -15,6 +15,7 @@ import { Route as SecurityRouteImport } from './routes/security'
 import { Route as RouterRouteImport } from './routes/router'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as PlannerRouteImport } from './routes/planner'
+import { Route as PipelineRouteImport } from './routes/pipeline'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
@@ -51,6 +52,11 @@ const ProjectsRoute = ProjectsRouteImport.update({
 const PlannerRoute = PlannerRouteImport.update({
   id: '/planner',
   path: '/planner',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PipelineRoute = PipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MemoryRoute = MemoryRouteImport.update({
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/integrations': typeof IntegrationsRoute
   '/marketplace': typeof MarketplaceRoute
   '/memory': typeof MemoryRoute
+  '/pipeline': typeof PipelineRoute
   '/planner': typeof PlannerRoute
   '/projects': typeof ProjectsRoute
   '/router': typeof RouterRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/integrations': typeof IntegrationsRoute
   '/marketplace': typeof MarketplaceRoute
   '/memory': typeof MemoryRoute
+  '/pipeline': typeof PipelineRoute
   '/planner': typeof PlannerRoute
   '/projects': typeof ProjectsRoute
   '/router': typeof RouterRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/integrations': typeof IntegrationsRoute
   '/marketplace': typeof MarketplaceRoute
   '/memory': typeof MemoryRoute
+  '/pipeline': typeof PipelineRoute
   '/planner': typeof PlannerRoute
   '/projects': typeof ProjectsRoute
   '/router': typeof RouterRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
     | '/integrations'
     | '/marketplace'
     | '/memory'
+    | '/pipeline'
     | '/planner'
     | '/projects'
     | '/router'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/integrations'
     | '/marketplace'
     | '/memory'
+    | '/pipeline'
     | '/planner'
     | '/projects'
     | '/router'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/integrations'
     | '/marketplace'
     | '/memory'
+    | '/pipeline'
     | '/planner'
     | '/projects'
     | '/router'
@@ -191,6 +203,7 @@ export interface RootRouteChildren {
   IntegrationsRoute: typeof IntegrationsRoute
   MarketplaceRoute: typeof MarketplaceRoute
   MemoryRoute: typeof MemoryRoute
+  PipelineRoute: typeof PipelineRoute
   PlannerRoute: typeof PlannerRoute
   ProjectsRoute: typeof ProjectsRoute
   RouterRoute: typeof RouterRoute
@@ -241,6 +254,13 @@ declare module '@tanstack/react-router' {
       path: '/planner'
       fullPath: '/planner'
       preLoaderRoute: typeof PlannerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pipeline': {
+      id: '/pipeline'
+      path: '/pipeline'
+      fullPath: '/pipeline'
+      preLoaderRoute: typeof PipelineRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/memory': {
@@ -303,6 +323,7 @@ const rootRouteChildren: RootRouteChildren = {
   IntegrationsRoute: IntegrationsRoute,
   MarketplaceRoute: MarketplaceRoute,
   MemoryRoute: MemoryRoute,
+  PipelineRoute: PipelineRoute,
   PlannerRoute: PlannerRoute,
   ProjectsRoute: ProjectsRoute,
   RouterRoute: RouterRoute,

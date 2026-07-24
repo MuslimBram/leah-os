@@ -25,6 +25,8 @@ const CATEGORY_LABEL: Record<IntegrationCategory, string> = {
   deployment: "Deployment",
   memory: "Memory",
   research: "Research",
+  observability: "Observability",
+  "local-model": "Local Models",
   other: "Other",
 };
 
