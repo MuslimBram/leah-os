@@ -26,6 +26,9 @@ import { sentryPlugin } from "./plugins/sentry";
 import { grafanaPlugin } from "./plugins/grafana";
 import { weaviatePlugin } from "./plugins/weaviate";
 import { ollamaPlugin } from "./plugins/ollama";
+import { typedocPlugin } from "./plugins/typedoc";
+import { vitestPlugin } from "./plugins/vitest";
+import { playwrightPlugin } from "./plugins/playwright";
 
 const BUILT_IN_PLUGINS: IntegrationPlugin[] = [
   lovableAiPlugin,
@@ -42,6 +45,9 @@ const BUILT_IN_PLUGINS: IntegrationPlugin[] = [
   langfusePlugin,
   sentryPlugin,
   grafanaPlugin,
+  typedocPlugin,
+  vitestPlugin,
+  playwrightPlugin,
 ];
 
 const runtime = new Map<string, IntegrationPlugin>(

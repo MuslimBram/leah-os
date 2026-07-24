@@ -5,7 +5,7 @@ export const n8nPlugin: IntegrationPlugin = {
   name: "n8n",
   vendor: "n8n.io",
   category: "automation",
-  capabilities: ["run-workflow"],
+  capabilities: ["run-workflow", "deploy"],
   status: "stable",
   description: "Duart e Leah — ekzekuton workflow-e (email, CRM, ETL). BYO instance ose cloud.",
   docsUrl: "https://docs.n8n.io",
