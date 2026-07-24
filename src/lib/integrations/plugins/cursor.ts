@@ -5,7 +5,7 @@ export const cursorPlugin: IntegrationPlugin = {
   name: "Cursor",
   vendor: "Anysphere",
   category: "worker-node",
-  capabilities: ["refactor", "generate-code"],
+  capabilities: ["refactor", "generate-code", "test"],
   status: "stable",
   description: "Worker node për refactor në-repo.",
   configSchema: [{ key: "apiKey", label: "API Key", type: "password" }],
