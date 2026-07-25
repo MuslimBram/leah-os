@@ -27,6 +27,13 @@ const CATEGORY_LABEL: Record<IntegrationCategory, string> = {
   research: "Research",
   observability: "Observability",
   "local-model": "Local Models",
+  vcs: "Version Control",
+  database: "Databases",
+  payments: "Payments",
+  "edge-platform": "Edge Platform",
+  messaging: "Messaging",
+  protocol: "Protocols",
+  sdk: "SDKs",
   other: "Other",
 };
 

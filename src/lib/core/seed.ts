@@ -60,6 +60,51 @@ export function seedCore() {
     description: "Deploy dhe preview environments.",
     auth: { kind: "api-key", fields: [{ key: "token", label: "Access Token", secret: true }] },
   });
+  registerConnector({
+    id: "stripe",
+    name: "Stripe",
+    vendor: "Stripe",
+    kind: "other",
+    description: "Pagesa, abonime dhe webhooks.",
+    docsUrl: "https://stripe.com/docs/api",
+    auth: { kind: "api-key", fields: [
+      { key: "secretKey", label: "Secret Key", secret: true },
+      { key: "webhookSecret", label: "Webhook Signing Secret", secret: true },
+    ] },
+  });
+  registerConnector({
+    id: "cloudflare",
+    name: "Cloudflare",
+    vendor: "Cloudflare",
+    kind: "deploy",
+    description: "Workers, R2, KV, D1, Pages — runtime edge.",
+    docsUrl: "https://developers.cloudflare.com",
+    auth: { kind: "api-key", fields: [
+      { key: "accountId", label: "Account ID" },
+      { key: "apiToken", label: "API Token", secret: true },
+    ] },
+  });
+  registerConnector({
+    id: "telegram",
+    name: "Telegram Bot",
+    vendor: "Telegram",
+    kind: "other",
+    description: "Bot API + Mini Apps.",
+    docsUrl: "https://core.telegram.org/bots/api",
+    auth: { kind: "api-key", fields: [{ key: "botToken", label: "Bot Token", secret: true }] },
+  });
+  registerConnector({
+    id: "whatsapp",
+    name: "WhatsApp Cloud API",
+    vendor: "Meta",
+    kind: "other",
+    description: "WhatsApp Business Cloud API zyrtare.",
+    docsUrl: "https://developers.facebook.com/docs/whatsapp/cloud-api",
+    auth: { kind: "api-key", fields: [
+      { key: "phoneNumberId", label: "Phone Number ID" },
+      { key: "accessToken", label: "Access Token", secret: true },
+    ] },
+  });
 
   // --- AI Providers (stub complete → real SDK wired later) ---
   const stub = (id: string, label: string, models: string[]) =>

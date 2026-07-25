@@ -17,6 +17,13 @@ export type IntegrationCategory =
   | "research"
   | "observability"
   | "local-model"
+  | "vcs"
+  | "database"
+  | "payments"
+  | "edge-platform"
+  | "messaging"
+  | "protocol"
+  | "sdk"
   | "other";
 
 export type IntegrationCapability =
@@ -32,7 +39,15 @@ export type IntegrationCapability =
   | "document"
   | "monitor"
   | "trace"
-  | "chat";
+  | "chat"
+  | "vcs"
+  | "db"
+  | "auth"
+  | "storage"
+  | "billing"
+  | "cdn"
+  | "messaging"
+  | "tool-calling";
 
 export type IntegrationStatus = "stable" | "beta" | "experimental" | "planned";
 
