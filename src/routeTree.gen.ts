@@ -22,6 +22,7 @@ import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as GithubRouteImport } from './routes/github'
 import { Route as DeploymentRouteImport } from './routes/deployment'
 import { Route as CostRouteImport } from './routes/cost'
+import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicWebhooksSourceRouteImport } from './routes/api/public/webhooks.$source'
 
@@ -90,6 +91,11 @@ const CostRoute = CostRouteImport.update({
   path: '/cost',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectorsRoute = ConnectorsRouteImport.update({
+  id: '/connectors',
+  path: '/connectors',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -103,6 +109,7 @@ const ApiPublicWebhooksSourceRoute = ApiPublicWebhooksSourceRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/connectors': typeof ConnectorsRoute
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/github': typeof GithubRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/connectors': typeof ConnectorsRoute
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/github': typeof GithubRoute
@@ -138,6 +146,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/connectors': typeof ConnectorsRoute
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/github': typeof GithubRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/connectors'
     | '/cost'
     | '/deployment'
     | '/github'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/connectors'
     | '/cost'
     | '/deployment'
     | '/github'
@@ -191,6 +202,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/connectors'
     | '/cost'
     | '/deployment'
     | '/github'
@@ -209,6 +221,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConnectorsRoute: typeof ConnectorsRoute
   CostRoute: typeof CostRoute
   DeploymentRoute: typeof DeploymentRoute
   GithubRoute: typeof GithubRoute
@@ -318,6 +331,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CostRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connectors': {
+      id: '/connectors'
+      path: '/connectors'
+      fullPath: '/connectors'
+      preLoaderRoute: typeof ConnectorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -337,6 +357,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConnectorsRoute: ConnectorsRoute,
   CostRoute: CostRoute,
   DeploymentRoute: DeploymentRoute,
   GithubRoute: GithubRoute,
