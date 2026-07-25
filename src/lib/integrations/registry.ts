@@ -29,11 +29,27 @@ import { ollamaPlugin } from "./plugins/ollama";
 import { typedocPlugin } from "./plugins/typedoc";
 import { vitestPlugin } from "./plugins/vitest";
 import { playwrightPlugin } from "./plugins/playwright";
+import { mcpPlugin } from "./plugins/mcp";
+import { aiSdkPlugin } from "./plugins/ai-sdk";
+import { githubPlugin } from "./plugins/github";
+import { supabasePlugin } from "./plugins/supabase";
+import { stripePlugin } from "./plugins/stripe";
+import { cloudflarePlugin } from "./plugins/cloudflare";
+import { telegramPlugin } from "./plugins/telegram";
+import { whatsappPlugin } from "./plugins/whatsapp";
 
 const BUILT_IN_PLUGINS: IntegrationPlugin[] = [
   lovableAiPlugin,
+  aiSdkPlugin,
+  mcpPlugin,
   antigravityPlugin,
   miniappPlugin,
+  githubPlugin,
+  supabasePlugin,
+  stripePlugin,
+  cloudflarePlugin,
+  telegramPlugin,
+  whatsappPlugin,
   n8nPlugin,
   langgraphPlugin,
   cursorPlugin,
