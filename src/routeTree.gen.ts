@@ -23,6 +23,7 @@ import { Route as GithubRouteImport } from './routes/github'
 import { Route as DeploymentRouteImport } from './routes/deployment'
 import { Route as CostRouteImport } from './routes/cost'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicWebhooksSourceRouteImport } from './routes/api/public/webhooks.$source'
 
 const TeamsRoute = TeamsRouteImport.update({
   id: '/teams',
@@ -94,6 +95,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicWebhooksSourceRoute = ApiPublicWebhooksSourceRouteImport.update({
+  id: '/api/public/webhooks/$source',
+  path: '/api/public/webhooks/$source',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
   '/teams': typeof TeamsRoute
+  '/api/public/webhooks/$source': typeof ApiPublicWebhooksSourceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
   '/teams': typeof TeamsRoute
+  '/api/public/webhooks/$source': typeof ApiPublicWebhooksSourceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
   '/teams': typeof TeamsRoute
+  '/api/public/webhooks/$source': typeof ApiPublicWebhooksSourceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -161,6 +170,7 @@ export interface FileRouteTypes {
     | '/security'
     | '/skills'
     | '/teams'
+    | '/api/public/webhooks/$source'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | '/security'
     | '/skills'
     | '/teams'
+    | '/api/public/webhooks/$source'
   id:
     | '__root__'
     | '/'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/security'
     | '/skills'
     | '/teams'
+    | '/api/public/webhooks/$source'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -210,6 +222,7 @@ export interface RootRouteChildren {
   SecurityRoute: typeof SecurityRoute
   SkillsRoute: typeof SkillsRoute
   TeamsRoute: typeof TeamsRoute
+  ApiPublicWebhooksSourceRoute: typeof ApiPublicWebhooksSourceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -312,6 +325,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/webhooks/$source': {
+      id: '/api/public/webhooks/$source'
+      path: '/api/public/webhooks/$source'
+      fullPath: '/api/public/webhooks/$source'
+      preLoaderRoute: typeof ApiPublicWebhooksSourceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -330,6 +350,7 @@ const rootRouteChildren: RootRouteChildren = {
   SecurityRoute: SecurityRoute,
   SkillsRoute: SkillsRoute,
   TeamsRoute: TeamsRoute,
+  ApiPublicWebhooksSourceRoute: ApiPublicWebhooksSourceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
