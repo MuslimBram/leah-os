@@ -22,7 +22,9 @@ import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as GithubRouteImport } from './routes/github'
 import { Route as DeploymentRouteImport } from './routes/deployment'
 import { Route as CostRouteImport } from './routes/cost'
+import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicWebhooksSourceRouteImport } from './routes/api/public/webhooks.$source'
 
 const TeamsRoute = TeamsRouteImport.update({
   id: '/teams',
@@ -89,14 +91,25 @@ const CostRoute = CostRouteImport.update({
   path: '/cost',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectorsRoute = ConnectorsRouteImport.update({
+  id: '/connectors',
+  path: '/connectors',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicWebhooksSourceRoute = ApiPublicWebhooksSourceRouteImport.update({
+  id: '/api/public/webhooks/$source',
+  path: '/api/public/webhooks/$source',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/connectors': typeof ConnectorsRoute
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/github': typeof GithubRoute
@@ -110,9 +123,11 @@ export interface FileRoutesByFullPath {
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
   '/teams': typeof TeamsRoute
+  '/api/public/webhooks/$source': typeof ApiPublicWebhooksSourceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/connectors': typeof ConnectorsRoute
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/github': typeof GithubRoute
@@ -126,10 +141,12 @@ export interface FileRoutesByTo {
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
   '/teams': typeof TeamsRoute
+  '/api/public/webhooks/$source': typeof ApiPublicWebhooksSourceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/connectors': typeof ConnectorsRoute
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/github': typeof GithubRoute
@@ -143,11 +160,13 @@ export interface FileRoutesById {
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
   '/teams': typeof TeamsRoute
+  '/api/public/webhooks/$source': typeof ApiPublicWebhooksSourceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/connectors'
     | '/cost'
     | '/deployment'
     | '/github'
@@ -161,9 +180,11 @@ export interface FileRouteTypes {
     | '/security'
     | '/skills'
     | '/teams'
+    | '/api/public/webhooks/$source'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/connectors'
     | '/cost'
     | '/deployment'
     | '/github'
@@ -177,9 +198,11 @@ export interface FileRouteTypes {
     | '/security'
     | '/skills'
     | '/teams'
+    | '/api/public/webhooks/$source'
   id:
     | '__root__'
     | '/'
+    | '/connectors'
     | '/cost'
     | '/deployment'
     | '/github'
@@ -193,10 +216,12 @@ export interface FileRouteTypes {
     | '/security'
     | '/skills'
     | '/teams'
+    | '/api/public/webhooks/$source'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConnectorsRoute: typeof ConnectorsRoute
   CostRoute: typeof CostRoute
   DeploymentRoute: typeof DeploymentRoute
   GithubRoute: typeof GithubRoute
@@ -210,6 +235,7 @@ export interface RootRouteChildren {
   SecurityRoute: typeof SecurityRoute
   SkillsRoute: typeof SkillsRoute
   TeamsRoute: typeof TeamsRoute
+  ApiPublicWebhooksSourceRoute: typeof ApiPublicWebhooksSourceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -305,6 +331,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CostRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connectors': {
+      id: '/connectors'
+      path: '/connectors'
+      fullPath: '/connectors'
+      preLoaderRoute: typeof ConnectorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -312,11 +345,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/webhooks/$source': {
+      id: '/api/public/webhooks/$source'
+      path: '/api/public/webhooks/$source'
+      fullPath: '/api/public/webhooks/$source'
+      preLoaderRoute: typeof ApiPublicWebhooksSourceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConnectorsRoute: ConnectorsRoute,
   CostRoute: CostRoute,
   DeploymentRoute: DeploymentRoute,
   GithubRoute: GithubRoute,
@@ -330,6 +371,7 @@ const rootRouteChildren: RootRouteChildren = {
   SecurityRoute: SecurityRoute,
   SkillsRoute: SkillsRoute,
   TeamsRoute: TeamsRoute,
+  ApiPublicWebhooksSourceRoute: ApiPublicWebhooksSourceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
