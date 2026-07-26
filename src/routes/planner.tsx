@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { PageHeader } from "@/components/leah/AppShell";
 import { planRequest } from "@/lib/planner.functions";
 import { AI_CATALOG } from "@/lib/leah-catalog";
-import { Loader2, Send, Workflow } from "lucide-react";
+import { orchestrator } from "@/lib/core/orchestrator";
+import { Loader2, Send, Workflow, Play } from "lucide-react";
 
 export const Route = createFileRoute("/planner")({
   head: () => ({
@@ -27,15 +29,18 @@ const EXAMPLES = [
 
 function PlannerPage() {
   const call = useServerFn(planRequest);
+  const navigate = useNavigate();
   const [input, setInput] = useState("Dua një aplikacion si Airbnb me pagesa dhe harta");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
+  const [lastRequest, setLastRequest] = useState("");
 
   async function submit(text?: string) {
     const req = (text ?? input).trim();
     if (!req) return;
     setLoading(true);
     setPlan(null);
+    setLastRequest(req);
     try {
       const res = await call({ data: { request: req } });
       setPlan(res as Plan);
@@ -44,6 +49,17 @@ function PlannerPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function sendToOrchestrator() {
+    if (!plan || plan.tasks.length === 0) return;
+    const exec = orchestrator.createExecution({
+      request: lastRequest || input,
+      summary: plan.summary,
+      tasks: plan.tasks,
+    });
+    void navigate({ to: "/executions" });
+    return exec;
   }
 
   return (
@@ -87,6 +103,12 @@ function PlannerPage() {
             <Workflow className="h-5 w-5 text-primary" />
             <div className="text-sm text-muted-foreground">{plan.summary}</div>
             {plan.mock && <span className="text-[10px] px-2 py-0.5 rounded-full border border-border text-muted-foreground">FALLBACK</span>}
+            <button
+              onClick={sendToOrchestrator}
+              className="ml-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 glow-primary"
+            >
+              <Play className="h-3.5 w-3.5" /> Dërgo te Orchestrator
+            </button>
           </div>
           <div className="grid md:grid-cols-2 gap-3">
             {plan.tasks.map((t, i) => {
