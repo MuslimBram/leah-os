@@ -1,5 +1,6 @@
 // Unit tests for the Master Orchestrator. Runnable with `bun test`.
 
+// @ts-ignore -- bun's built-in test runner; types not installed in the project.
 import { describe, expect, it } from "bun:test";
 import { Orchestrator, type Task } from "./orchestrator";
 
