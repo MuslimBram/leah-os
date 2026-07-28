@@ -29,10 +29,10 @@ export const memoryService = {
     const emb = getEmbeddingProvider();
     const embedding = await emb.embed(input.content);
     const rec: MemoryRecord = {
+      ...input,
       id: input.id ?? uid(),
       createdAt: input.createdAt ?? Date.now(),
       metadata: input.metadata ?? {},
-      ...input,
       embedding,
     };
     await getVectorStore().upsert(rec);
