@@ -6,7 +6,10 @@ import { PageHeader } from "@/components/leah/AppShell";
 import { planRequest } from "@/lib/planner.functions";
 import { AI_CATALOG } from "@/lib/leah-catalog";
 import { orchestrator } from "@/lib/core/orchestrator";
-import { Loader2, Send, Workflow, Play } from "lucide-react";
+import { memoryService } from "@/lib/memory/memory-service";
+import { retrievalService } from "@/lib/memory/retrieval";
+import type { MemoryHit } from "@/lib/memory/types";
+import { Loader2, Send, Workflow, Play, Brain } from "lucide-react";
 
 export const Route = createFileRoute("/planner")({
   head: () => ({
@@ -34,6 +37,7 @@ function PlannerPage() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastRequest, setLastRequest] = useState("");
+  const [retrieved, setRetrieved] = useState<MemoryHit[]>([]);
 
   async function submit(text?: string) {
     const req = (text ?? input).trim();
@@ -42,8 +46,19 @@ function PlannerPage() {
     setPlan(null);
     setLastRequest(req);
     try {
+      // Retrieve relevant memory BEFORE calling the AI so the user can see it.
+      const built = await retrievalService.buildPrompt({ query: req, limit: 5 });
+      setRetrieved(built.hits);
+      await memoryService.store({
+        scope: "session", kind: "prompt", content: req, metadata: { at: Date.now() },
+      });
       const res = await call({ data: { request: req } });
       setPlan(res as Plan);
+      if ((res as Plan).summary) {
+        await memoryService.store({
+          scope: "long-term", kind: "summary", content: (res as Plan).summary, metadata: { request: req },
+        });
+      }
     } catch (e) {
       setPlan({ summary: "", tasks: [], error: (e as Error).message });
     } finally {
@@ -95,6 +110,24 @@ function PlannerPage() {
 
       {plan?.error && (
         <div className="mt-6 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive-foreground">{plan.error}</div>
+      )}
+
+      {retrieved.length > 0 && (
+        <div className="mt-6 rounded-xl border border-border bg-card/60 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Brain className="h-4 w-4 text-primary" />
+            <div className="text-xs uppercase tracking-widest text-muted-foreground">Konteksti i injektuar nga Memory</div>
+          </div>
+          <ul className="space-y-1.5">
+            {retrieved.map((h) => (
+              <li key={h.record.id} className="text-xs text-muted-foreground">
+                <span className="text-primary font-mono">{h.score.toFixed(2)}</span>{" "}
+                <span className="opacity-70">[{h.record.scope}/{h.record.kind}]</span>{" "}
+                {h.record.content.slice(0, 140)}{h.record.content.length > 140 ? "…" : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {plan && plan.tasks.length > 0 && (
