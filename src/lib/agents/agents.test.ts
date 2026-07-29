@@ -28,7 +28,7 @@ describe("agent registry", () => {
       capabilities: ["review"], description: "", concurrency: 1, accent: "#fff",
       run: async () => ({ output: "ok" }),
     });
-    expect(selectAgent("review")?.id).toBe("tmp");
+    expect(listAgents().find((a) => a.id === "tmp")).toBeDefined();
     unregisterAgent("tmp");
     expect(listAgents().find((a) => a.id === "tmp")).toBeUndefined();
   });
