@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { installMemoryBootstrap } from "../lib/memory/bootstrap";
+import { installAgentBootstrap } from "../lib/agents/bootstrap";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -117,7 +118,7 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  useEffect(() => { installMemoryBootstrap(); }, []);
+  useEffect(() => { installMemoryBootstrap(); installAgentBootstrap(); }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
