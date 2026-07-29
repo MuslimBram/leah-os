@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Workflow, Cpu, FolderKanban, Users, Puzzle, Activity,
-  Rocket, ShieldCheck, DollarSign, Github, Store, Brain, Boxes, GitBranch, Plug,
+  Rocket, ShieldCheck, DollarSign, Github, Store, Brain, Boxes, GitBranch, Plug, Bot,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -9,6 +9,7 @@ const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/planner", label: "Planner", icon: Workflow },
   { to: "/executions", label: "Executions", icon: Activity },
+  { to: "/agents", label: "Agents", icon: Bot },
   { to: "/pipeline", label: "Pipeline", icon: GitBranch },
   { to: "/router", label: "AI Router", icon: Cpu },
   { to: "/projects", label: "Projects", icon: FolderKanban },

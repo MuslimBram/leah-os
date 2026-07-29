@@ -33,6 +33,8 @@ export type Task = {
   description: string;
   assignedAi: string;
   status: TaskStatus;
+  /** Higher runs first. Default 0. */
+  priority: number;
   attempts: number;
   maxRetries: number;
   logs: TaskLog[];
@@ -61,6 +63,7 @@ export type ExecutionPlanInput = {
     title: string;
     description: string;
     assignedAi: string;
+    priority?: number;
   }[];
 };
 
@@ -148,6 +151,7 @@ export class Orchestrator {
         description: t.description,
         assignedAi: t.assignedAi,
         status: "pending",
+        priority: t.priority ?? 0,
         attempts: 0,
         maxRetries: this.maxRetries,
         logs: [
@@ -178,6 +182,12 @@ export class Orchestrator {
   /** Fill available worker slots from the queue. */
   private async pump() {
     while (this.inFlight < this.concurrency && this.queue.length > 0) {
+      // Priority queue: highest priority first, FIFO within equal priority.
+      this.queue.sort((a, b) => {
+        const ta = this.tasks.get(a);
+        const tb = this.tasks.get(b);
+        return (tb?.priority ?? 0) - (ta?.priority ?? 0);
+      });
       const taskId = this.queue.shift();
       if (!taskId) break;
       this.inFlight += 1;
