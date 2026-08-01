@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeEach } from "vitest";
+// @ts-ignore -- bun's built-in test runner
+import { describe, expect, it, beforeEach } from "bun:test";
 import { resolveWaves, runWorkflow, listWorkflowRuns, clearWorkflowRuns } from "./engine";
 import { clearWorkflows, listWorkflows, setWorkflowEnabled, upsertWorkflow } from "./store";
 import { schedulerTick } from "./scheduler";
