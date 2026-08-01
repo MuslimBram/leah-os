@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as TeamsRouteImport } from './routes/teams'
 import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SecurityRouteImport } from './routes/security'
@@ -28,6 +29,11 @@ import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicWebhooksSourceRouteImport } from './routes/api/public/webhooks.$source'
 
+const WorkflowsRoute = WorkflowsRouteImport.update({
+  id: '/workflows',
+  path: '/workflows',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TeamsRoute = TeamsRouteImport.update({
   id: '/teams',
   path: '/teams',
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
   '/teams': typeof TeamsRoute
+  '/workflows': typeof WorkflowsRoute
   '/api/public/webhooks/$source': typeof ApiPublicWebhooksSourceRoute
 }
 export interface FileRoutesByTo {
@@ -157,6 +164,7 @@ export interface FileRoutesByTo {
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
   '/teams': typeof TeamsRoute
+  '/workflows': typeof WorkflowsRoute
   '/api/public/webhooks/$source': typeof ApiPublicWebhooksSourceRoute
 }
 export interface FileRoutesById {
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
   '/teams': typeof TeamsRoute
+  '/workflows': typeof WorkflowsRoute
   '/api/public/webhooks/$source': typeof ApiPublicWebhooksSourceRoute
 }
 export interface FileRouteTypes {
@@ -200,6 +209,7 @@ export interface FileRouteTypes {
     | '/security'
     | '/skills'
     | '/teams'
+    | '/workflows'
     | '/api/public/webhooks/$source'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -220,6 +230,7 @@ export interface FileRouteTypes {
     | '/security'
     | '/skills'
     | '/teams'
+    | '/workflows'
     | '/api/public/webhooks/$source'
   id:
     | '__root__'
@@ -240,6 +251,7 @@ export interface FileRouteTypes {
     | '/security'
     | '/skills'
     | '/teams'
+    | '/workflows'
     | '/api/public/webhooks/$source'
   fileRoutesById: FileRoutesById
 }
@@ -261,11 +273,19 @@ export interface RootRouteChildren {
   SecurityRoute: typeof SecurityRoute
   SkillsRoute: typeof SkillsRoute
   TeamsRoute: typeof TeamsRoute
+  WorkflowsRoute: typeof WorkflowsRoute
   ApiPublicWebhooksSourceRoute: typeof ApiPublicWebhooksSourceRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/workflows': {
+      id: '/workflows'
+      path: '/workflows'
+      fullPath: '/workflows'
+      preLoaderRoute: typeof WorkflowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/teams': {
       id: '/teams'
       path: '/teams'
@@ -413,18 +433,9 @@ const rootRouteChildren: RootRouteChildren = {
   SecurityRoute: SecurityRoute,
   SkillsRoute: SkillsRoute,
   TeamsRoute: TeamsRoute,
+  WorkflowsRoute: WorkflowsRoute,
   ApiPublicWebhooksSourceRoute: ApiPublicWebhooksSourceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
