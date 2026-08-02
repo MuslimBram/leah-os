@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 import { installMemoryBootstrap } from "../lib/memory/bootstrap";
 import { installAgentBootstrap } from "../lib/agents/bootstrap";
 import { installWorkflowBootstrap } from "../lib/workflows/bootstrap";
+import { installSecurityBootstrap } from "../lib/security/bootstrap";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -119,7 +120,7 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  useEffect(() => { installMemoryBootstrap(); installAgentBootstrap(); installWorkflowBootstrap(); }, []);
+  useEffect(() => { installMemoryBootstrap(); installAgentBootstrap(); installWorkflowBootstrap(); installSecurityBootstrap(); }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
