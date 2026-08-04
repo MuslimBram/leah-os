@@ -24,9 +24,12 @@ export function installSkillsBootstrap() {
       for (const task of orchestrator.getTasks(exec.id)) {
         if (task.status !== "completed" || seen.has(task.id)) continue;
         seen.add(task.id);
-        const output = typeof task.result === "string"
-          ? task.result
-          : JSON.stringify(task.result ?? "");
+        const raw = task.result as { output?: unknown } | string | undefined;
+        const output = typeof raw === "string"
+          ? raw
+          : typeof raw?.output === "string"
+            ? raw.output
+            : "";
         learnFromResult({ kind: task.kind, title: task.title, output });
       }
     }
