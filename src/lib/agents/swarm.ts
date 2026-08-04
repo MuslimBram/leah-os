@@ -8,6 +8,7 @@
 
 import { retrievalService } from "@/lib/memory/retrieval";
 import { memoryService } from "@/lib/memory/memory-service";
+import { augmentPrompt } from "@/lib/skills/engine";
 import { estimateTokens } from "@/lib/cost/pricing";
 import { optimizeRoute } from "@/lib/cost/optimizer";
 import { getCostPolicy } from "@/lib/cost/policy";
@@ -155,6 +156,8 @@ export const agentTaskExecutor: TaskExecutor = async (task) => {
     limit: 5,
   });
 
+  const enrichedPrompt = augmentPrompt(task.kind, built.finalPrompt);
+
   sendAgentMessage({
     from: "orchestrator",
     to: agent.id,
@@ -168,13 +171,13 @@ export const agentTaskExecutor: TaskExecutor = async (task) => {
     kind: task.kind,
     title: task.title,
     description: task.description,
-    prompt: built.finalPrompt,
+    prompt: enrichedPrompt,
     depth: 0,
     log: (m) => task.logs.push({ ts: Date.now(), level: "info", message: `[${agent.id}] ${m}` }),
   });
 
   // Cost telemetry: what the optimizer would pick vs. the quality baseline.
-  const inputTokens = estimateTokens(built.finalPrompt);
+  const inputTokens = estimateTokens(enrichedPrompt);
   const outputTokens = estimateTokens(result.output);
   const decision = optimizeRoute({ kind: task.kind, inputTokens, outputTokens, policy: getCostPolicy() });
   recordUsage({
