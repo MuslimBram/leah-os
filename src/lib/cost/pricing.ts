@@ -18,6 +18,16 @@ const DEFAULT_PRICING: Record<string, Pricing> = {
   mistral:    { input: 0.25,  output: 0.75,  contextTokens: 128_000 },
   llama:      { input: 0.05,  output: 0.10,  contextTokens: 128_000 },
   qwen:       { input: 0.20,  output: 0.60,  contextTokens: 256_000 },
+  kimi:       { input: 0.15,  output: 2.50,  contextTokens: 256_000 },
+  glm:        { input: 0.40,  output: 1.75,  contextTokens: 200_000 },
+  minimax:    { input: 0.30,  output: 1.20,  contextTokens: 200_000 },
+  bolt:       { input: 1.00,  output: 4.00,  contextTokens: 128_000 },
+  v0:         { input: 1.00,  output: 4.00,  contextTokens: 128_000 },
+  replit:     { input: 1.20,  output: 4.50,  contextTokens: 128_000 },
+  devin:      { input: 4.00,  output: 16.00, contextTokens: 200_000 },
+  antigravity:{ input: 0.80,  output: 3.20,  contextTokens: 1_000_000 },
+  base44:     { input: 1.00,  output: 3.50,  contextTokens: 128_000 },
+  emergent:   { input: 0.90,  output: 3.20,  contextTokens: 128_000 },
 };
 
 const overrides: Record<string, Pricing> = {};
