@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+// @ts-ignore -- bun's built-in test runner
+import { describe, it, expect, beforeEach } from "bun:test";
 import { orchestrator } from "@/lib/core/orchestrator";
 import { seedAgents } from "@/lib/agents/agents.seed";
 import { deployService } from "./service";
