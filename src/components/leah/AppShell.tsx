@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Workflow, Cpu, FolderKanban, Users, Puzzle, Activity,
-  Rocket, ShieldCheck, DollarSign, Github, Store, Brain, Boxes, GitBranch, Plug, Bot, CalendarClock,
+  Rocket, ShieldCheck, DollarSign, Github, Store, Brain, Boxes, GitBranch, Plug, Bot, CalendarClock, ClipboardList,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -24,6 +24,7 @@ const NAV = [
   { to: "/deployment", label: "Deployment", icon: Rocket },
   { to: "/security", label: "Security", icon: ShieldCheck },
   { to: "/cost", label: "Cost Optimizer", icon: DollarSign },
+  { to: "/report", label: "Raporti Total", icon: ClipboardList },
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {

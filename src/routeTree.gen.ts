@@ -14,6 +14,7 @@ import { Route as TeamsRouteImport } from './routes/teams'
 import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SecurityRouteImport } from './routes/security'
 import { Route as RouterRouteImport } from './routes/router'
+import { Route as ReportRouteImport } from './routes/report'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as PlannerRouteImport } from './routes/planner'
 import { Route as PipelineRouteImport } from './routes/pipeline'
@@ -52,6 +53,11 @@ const SecurityRoute = SecurityRouteImport.update({
 const RouterRoute = RouterRouteImport.update({
   id: '/router',
   path: '/router',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportRoute = ReportRouteImport.update({
+  id: '/report',
+  path: '/report',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsRoute = ProjectsRouteImport.update({
@@ -139,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/pipeline': typeof PipelineRoute
   '/planner': typeof PlannerRoute
   '/projects': typeof ProjectsRoute
+  '/report': typeof ReportRoute
   '/router': typeof RouterRoute
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
@@ -160,6 +167,7 @@ export interface FileRoutesByTo {
   '/pipeline': typeof PipelineRoute
   '/planner': typeof PlannerRoute
   '/projects': typeof ProjectsRoute
+  '/report': typeof ReportRoute
   '/router': typeof RouterRoute
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
@@ -182,6 +190,7 @@ export interface FileRoutesById {
   '/pipeline': typeof PipelineRoute
   '/planner': typeof PlannerRoute
   '/projects': typeof ProjectsRoute
+  '/report': typeof ReportRoute
   '/router': typeof RouterRoute
   '/security': typeof SecurityRoute
   '/skills': typeof SkillsRoute
@@ -205,6 +214,7 @@ export interface FileRouteTypes {
     | '/pipeline'
     | '/planner'
     | '/projects'
+    | '/report'
     | '/router'
     | '/security'
     | '/skills'
@@ -226,6 +236,7 @@ export interface FileRouteTypes {
     | '/pipeline'
     | '/planner'
     | '/projects'
+    | '/report'
     | '/router'
     | '/security'
     | '/skills'
@@ -247,6 +258,7 @@ export interface FileRouteTypes {
     | '/pipeline'
     | '/planner'
     | '/projects'
+    | '/report'
     | '/router'
     | '/security'
     | '/skills'
@@ -269,6 +281,7 @@ export interface RootRouteChildren {
   PipelineRoute: typeof PipelineRoute
   PlannerRoute: typeof PlannerRoute
   ProjectsRoute: typeof ProjectsRoute
+  ReportRoute: typeof ReportRoute
   RouterRoute: typeof RouterRoute
   SecurityRoute: typeof SecurityRoute
   SkillsRoute: typeof SkillsRoute
@@ -312,6 +325,13 @@ declare module '@tanstack/react-router' {
       path: '/router'
       fullPath: '/router'
       preLoaderRoute: typeof RouterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/report': {
+      id: '/report'
+      path: '/report'
+      fullPath: '/report'
+      preLoaderRoute: typeof ReportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects': {
@@ -429,6 +449,7 @@ const rootRouteChildren: RootRouteChildren = {
   PipelineRoute: PipelineRoute,
   PlannerRoute: PlannerRoute,
   ProjectsRoute: ProjectsRoute,
+  ReportRoute: ReportRoute,
   RouterRoute: RouterRoute,
   SecurityRoute: SecurityRoute,
   SkillsRoute: SkillsRoute,
