@@ -24,7 +24,7 @@ const ENVS: DeployEnv[] = ["preview", "staging", "production"];
 function DeploymentPage() {
   const deployments = useDeployments();
   const { projects } = useProjects();
-  const { executions, tasksFor } = useOrchestrator();
+  const { executions, getTasks } = useOrchestrator();
   const [targetId, setTargetId] = useState("railway");
   const [env, setEnv] = useState<DeployEnv>("production");
   const [projectId, setProjectId] = useState<string>("");
@@ -124,7 +124,7 @@ function DeploymentPage() {
         <div className="space-y-3">
           {deployments.map((d) => {
             const exec = executions.find((e) => e.id === d.executionId);
-            const tasks = exec ? tasksFor(exec.id) : [];
+            const tasks = exec ? getTasks(exec.id) : [];
             const done = tasks.filter((t) => t.status === "completed").length;
             const Icon = d.status === "succeeded" ? CheckCircle2 : d.status === "failed" ? XCircle : Loader2;
             return (
