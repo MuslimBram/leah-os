@@ -22,6 +22,7 @@ import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as GithubRouteImport } from './routes/github'
+import { Route as FreeAiRouteImport } from './routes/free-ai'
 import { Route as ExecutionsRouteImport } from './routes/executions'
 import { Route as DeploymentRouteImport } from './routes/deployment'
 import { Route as CostRouteImport } from './routes/cost'
@@ -95,6 +96,11 @@ const GithubRoute = GithubRouteImport.update({
   path: '/github',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FreeAiRoute = FreeAiRouteImport.update({
+  id: '/free-ai',
+  path: '/free-ai',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ExecutionsRoute = ExecutionsRouteImport.update({
   id: '/executions',
   path: '/executions',
@@ -138,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/executions': typeof ExecutionsRoute
+  '/free-ai': typeof FreeAiRoute
   '/github': typeof GithubRoute
   '/integrations': typeof IntegrationsRoute
   '/marketplace': typeof MarketplaceRoute
@@ -160,6 +167,7 @@ export interface FileRoutesByTo {
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/executions': typeof ExecutionsRoute
+  '/free-ai': typeof FreeAiRoute
   '/github': typeof GithubRoute
   '/integrations': typeof IntegrationsRoute
   '/marketplace': typeof MarketplaceRoute
@@ -183,6 +191,7 @@ export interface FileRoutesById {
   '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/executions': typeof ExecutionsRoute
+  '/free-ai': typeof FreeAiRoute
   '/github': typeof GithubRoute
   '/integrations': typeof IntegrationsRoute
   '/marketplace': typeof MarketplaceRoute
@@ -207,6 +216,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/deployment'
     | '/executions'
+    | '/free-ai'
     | '/github'
     | '/integrations'
     | '/marketplace'
@@ -229,6 +239,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/deployment'
     | '/executions'
+    | '/free-ai'
     | '/github'
     | '/integrations'
     | '/marketplace'
@@ -251,6 +262,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/deployment'
     | '/executions'
+    | '/free-ai'
     | '/github'
     | '/integrations'
     | '/marketplace'
@@ -274,6 +286,7 @@ export interface RootRouteChildren {
   CostRoute: typeof CostRoute
   DeploymentRoute: typeof DeploymentRoute
   ExecutionsRoute: typeof ExecutionsRoute
+  FreeAiRoute: typeof FreeAiRoute
   GithubRoute: typeof GithubRoute
   IntegrationsRoute: typeof IntegrationsRoute
   MarketplaceRoute: typeof MarketplaceRoute
@@ -383,6 +396,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GithubRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/free-ai': {
+      id: '/free-ai'
+      path: '/free-ai'
+      fullPath: '/free-ai'
+      preLoaderRoute: typeof FreeAiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/executions': {
       id: '/executions'
       path: '/executions'
@@ -442,6 +462,7 @@ const rootRouteChildren: RootRouteChildren = {
   CostRoute: CostRoute,
   DeploymentRoute: DeploymentRoute,
   ExecutionsRoute: ExecutionsRoute,
+  FreeAiRoute: FreeAiRoute,
   GithubRoute: GithubRoute,
   IntegrationsRoute: IntegrationsRoute,
   MarketplaceRoute: MarketplaceRoute,

@@ -3,8 +3,9 @@ import { PageHeader } from "@/components/leah/AppShell";
 import { useOrchestrator } from "@/lib/core/use-orchestrator";
 import { orchestrator, type Task, type TaskStatus } from "@/lib/core/orchestrator";
 import { AI_CATALOG } from "@/lib/leah-catalog";
-import { useState } from "react";
-import { Activity, CheckCircle2, XCircle, Loader2, Clock, RotateCw, Trash2 } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
+import { Activity, CheckCircle2, XCircle, Loader2, Clock, RotateCw, Trash2, FileCode2 } from "lucide-react";
+import { artifactsFor, subscribeArtifacts } from "@/lib/gen/artifacts";
 
 export const Route = createFileRoute("/executions")({
   head: () => ({
@@ -126,6 +127,11 @@ function ExecutionsPage() {
 
 function TaskRow({ task }: { task: Task }) {
   const [open, setOpen] = useState(false);
+  const artifacts = useSyncExternalStore(
+    subscribeArtifacts,
+    () => artifactsFor(task.id),
+    () => [],
+  );
   const ai = AI_CATALOG.find((a) => a.id === task.assignedAi) ?? AI_CATALOG[0];
   const duration = task.startedAt && task.finishedAt ? `${task.finishedAt - task.startedAt}ms` : task.startedAt ? "…" : "—";
   return (
@@ -149,6 +155,20 @@ function TaskRow({ task }: { task: Task }) {
       {open && (
         <div className="border-t border-border px-3 py-2 bg-card/60">
           {task.error && <div className="text-xs text-destructive mb-2">{task.error}</div>}
+          {artifacts.map((a) => (
+            <div key={a.createdAt} className="mb-3">
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
+                <FileCode2 className="h-3 w-3" /> Kod i gjeneruar · {a.provider}/{a.model}
+              </div>
+              {a.notes && <div className="text-xs text-muted-foreground mb-2 whitespace-pre-wrap">{a.notes}</div>}
+              {a.files.map((f) => (
+                <details key={f.path} className="mb-2 rounded-lg border border-border bg-background/60">
+                  <summary className="cursor-pointer px-2 py-1.5 text-[11px] font-mono text-primary">{f.path}</summary>
+                  <pre className="px-3 py-2 text-[11px] overflow-x-auto max-h-72 text-foreground/90"><code>{f.content}</code></pre>
+                </details>
+              ))}
+            </div>
+          ))}
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Logs</div>
           <div className="space-y-0.5 font-mono text-[11px] max-h-40 overflow-y-auto">
             {task.logs.map((l, i) => (

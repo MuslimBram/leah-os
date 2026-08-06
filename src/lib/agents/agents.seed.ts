@@ -3,19 +3,69 @@
 
 import { registerAgent } from "./registry";
 import type { Agent, AgentContext, AgentResult } from "./types";
+import { generateCode } from "@/lib/gen/codegen.functions";
+import { activeByok } from "@/lib/gen/byok-store";
+import { addArtifact, parseFiles } from "@/lib/gen/artifacts";
+import { getFreeProvider } from "@/lib/gen/free-providers";
 
-function work(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/** Shared simulated runner. Real provider calls slot in here later. */
-function makeRunner(agent: Pick<Agent, "id" | "name" | "providerId">) {
+/** Real runner: calls a live model and stores the generated files. */
+function makeRunner(agent: Omit<Agent, "run">) {
   return async (ctx: AgentContext): Promise<AgentResult> => {
-    ctx.log(`${agent.name} mori detyrën (${ctx.kind})`);
-    await work(300 + Math.floor(Math.random() * 600));
+    ctx.log(`${agent.name} mori detyrën (${ctx.kind}) — po thërret modelin…`);
+
+    const byokCfg = activeByok();
+    const spec = byokCfg ? getFreeProvider(byokCfg.providerId) : undefined;
+    const byok = byokCfg
+      ? {
+          providerId: byokCfg.providerId,
+          apiKey: byokCfg.apiKey,
+          baseUrl: byokCfg.baseUrl || spec?.baseUrl,
+          model: byokCfg.model || spec?.models[0],
+        }
+      : null;
+
+    let res: { text: string; provider: string; model: string };
+    try {
+      res = await generateCode({
+        data: {
+          kind: ctx.kind,
+          title: ctx.title,
+          description: ctx.description,
+          prompt: ctx.prompt,
+          role: agent.role,
+          byok,
+        },
+      });
+    } catch (err) {
+      // Offline / no provider reachable: degrade instead of failing the task.
+      const message = err instanceof Error ? err.message : String(err);
+      ctx.log(`Modeli nuk u arrit (${message}) — dalje offline.`);
+      return {
+        output: `${agent.name} nuk arriti të thërrasë një model për "${ctx.title}". Konfiguro një provider te /free-ai.`,
+        artifacts: { agent: agent.id, provider: "offline", model: "none", files: 0 },
+      };
+    }
+
+    const { notes, files } = parseFiles(res.text);
+    ctx.log(`${res.provider}/${res.model} → ${files.length} file të gjeneruar`);
+
+    addArtifact({
+      taskId: ctx.taskId,
+      executionId: ctx.executionId,
+      agentId: agent.id,
+      title: ctx.title,
+      provider: res.provider,
+      model: res.model,
+      notes,
+      files,
+      createdAt: Date.now(),
+    });
+
     return {
-      output: `${agent.name} përfundoi "${ctx.title}" duke përdorur ${agent.providerId}.`,
-      artifacts: { agent: agent.id, provider: agent.providerId, kind: ctx.kind },
+      output: files.length
+        ? `${files.length} file: ${files.map((f) => f.path).join(", ")}\n${notes}`.trim()
+        : res.text.slice(0, 4000),
+      artifacts: { agent: agent.id, provider: res.provider, model: res.model, files: files.length },
     };
   };
 }
