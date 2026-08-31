@@ -37,13 +37,12 @@ function makeRunner(agent: Omit<Agent, "run">) {
         },
       });
     } catch (err) {
-      // Offline / no provider reachable: degrade instead of failing the task.
+      // A provider outage is a failed task, not a successful "offline" result.
+      // The orchestrator will apply its normal retry/backoff policy and expose
+      // the failure truthfully to the execution UI.
       const message = err instanceof Error ? err.message : String(err);
-      ctx.log(`Modeli nuk u arrit (${message}) — dalje offline.`);
-      return {
-        output: `${agent.name} nuk arriti të thërrasë një model për "${ctx.title}". Konfiguro një provider te /free-ai.`,
-        artifacts: { agent: agent.id, provider: "offline", model: "none", files: 0 },
-      };
+      ctx.log(`Modeli nuk u arrit: ${message}`);
+      throw new Error(`AI provider unavailable for ${agent.name}: ${message}`);
     }
 
     const { notes, files } = parseFiles(res.text);
