@@ -6,9 +6,9 @@ export const Route = createFileRoute("/report")({
   head: () => ({
     meta: [
       { title: "Raporti Total i Sistemit — Leah AI OS" },
-      { name: "description", content: "Statusi i detajuar i çdo aftësie të Leah AI OS: swarm, memory, skills, cost, security, deployment dhe çfarë mbetet." },
+      { name: "description", content: "Statusi i verifikuar i çdo aftësie të Leah AI OS: çfarë punon realisht, çfarë është runtime lokal dhe çfarë kërkon certifikim live." },
       { property: "og:title", content: "Raporti Total i Sistemit — Leah AI OS" },
-      { property: "og:description", content: "Çfarë është ndërtuar, si funksionon dhe çfarë mbetet në roadmap." },
+      { property: "og:description", content: "Status runtime-truth: funksionalitet real, prototype dhe bllokues live." },
     ],
   }),
   component: ReportPage,
@@ -17,27 +17,29 @@ export const Route = createFileRoute("/report")({
 type State = "done" | "partial" | "planned";
 
 const CAPABILITIES: { name: string; state: State; where: string; note: string }[] = [
-  { name: "Agent Concurrent Tasks", state: "done", where: "lib/agents/swarm.ts", note: "Slot-e konkurrence për agjent + worker pool në orchestrator." },
-  { name: "Agent Priority Queue", state: "done", where: "lib/core/orchestrator.ts", note: "task.priority — më i larti ekzekutohet i pari, me retry/backoff." },
-  { name: "Extra Long Chat / Context", state: "done", where: "lib/memory/retrieval.ts", note: "Kontekst me shtresa + kompresim para injektimit në prompt." },
-  { name: "Capacity deri në 1M tokens", state: "partial", where: "lib/cost/pricing.ts", note: "Dritaret e kontekstit respektohen nga router-i; 1M vlen vetëm për modelet që e mbështesin." },
-  { name: "Customizable Dashboard", state: "partial", where: "routes/index.tsx", note: "Dashboard me widget-e statike; rirenditja/persistenca e widget-eve mbetet." },
-  { name: "Scheduled Tasks", state: "done", where: "lib/workflows/scheduler.ts", note: "Interval + event triggers mbi Event Bus." },
-  { name: "Widget Task", state: "partial", where: "routes/executions.tsx", note: "Kartat live të ekzekutimeve; jo ende widget-e të lëvizshme." },
-  { name: "Projects", state: "done", where: "lib/projects/", note: "Workspace, blueprint 7-hapësh, artefakte, status live." },
-  { name: "Project Storage", state: "done", where: "lib/projects/store.ts", note: "Persistencë lokale e projekteve dhe artefakteve." },
-  { name: "Plugins", state: "done", where: "lib/integrations/", note: "26+ plugin-e opsionale me registry dhe capability routing." },
-  { name: "Swarm", state: "done", where: "lib/agents/swarm.ts", note: "7 agjentë me rol, përzgjedhje sipas aftësisë, bus mesazhesh." },
-  { name: "Swarm subtasks", state: "done", where: "lib/agents/swarm.ts", note: "Delegim me thellësi maks. 2 dhe ndjekje e nën-detyrave." },
-  { name: "Dream Memory", state: "partial", where: "lib/memory/", note: "Kujtesë semantike + mësime; konsolidimi 'offline' mbetet." },
-  { name: "Self-evolving Skills", state: "done", where: "lib/skills/engine.ts", note: "XP, nivele dhe mësime të distiluara pas çdo detyre." },
-  { name: "Goals", state: "done", where: "lib/projects/service.ts", note: "Qëllimi i projektit injektohet si kontekst në çdo detyrë." },
-  { name: "Code generation", state: "done", where: "lib/planner.functions.ts", note: "Planner me AI Gateway → detyra të ekzekutueshme." },
-  { name: "Cost Optimizer", state: "done", where: "lib/cost/", note: "Politika cheapest/balanced/quality + telemetri kursimesh." },
-  { name: "Security (Vault, RBAC, Audit)", state: "done", where: "lib/security/", note: "AES-256-GCM, 5 role, log audit-i append-only, rate limiting." },
-  { name: "Deploy website me database", state: "done", where: "lib/deploy/", note: "9 targete, pipeline build → test → migrime → deploy → health check." },
-  { name: "Claw (Web, Android, PC)", state: "planned", where: "—", note: "Kërkon agjent nativ jashtë shfletuesit; jo pjesë e këtij runtime." },
-  { name: "Group Chat me Claw", state: "planned", where: "lib/agents/bus.ts", note: "Bus-i i mesazheve është gati; i mungon UI-ja e bisedës në grup." },
+  { name: "Agent Concurrent Tasks", state: "done", where: "lib/agents/swarm.ts", note: "Slot-e konkurrence për agjent + worker pool real brenda procesit të aplikacionit; remote workers mbeten fazë tjetër." },
+  { name: "Agent Priority Queue", state: "done", where: "lib/core/orchestrator.ts", note: "task.priority — më i larti ekzekutohet i pari, me retry/backoff dhe status real dështimi." },
+  { name: "Extra Long Chat / Context", state: "partial", where: "lib/memory/retrieval.ts", note: "Kontekst me shtresa dhe retrieval ekziston; nuk është certifikuar ende një bisedë reale shumë e gjatë end-to-end." },
+  { name: "Capacity deri në 1M tokens", state: "partial", where: "lib/cost/pricing.ts", note: "Varet nga modeli/provider-i; duhet test live për çdo model që deklaron dritare 1M." },
+  { name: "Customizable Dashboard", state: "partial", where: "routes/index.tsx", note: "Dashboard ekziston; rirenditja dhe persistenca multi-device e widget-eve mbetet." },
+  { name: "Scheduled Tasks", state: "partial", where: "lib/workflows/scheduler.ts", note: "Scheduler-i aktual përdor setInterval/event bus në runtime; nuk është durable cron/job queue pas restart-it." },
+  { name: "Widget Task", state: "partial", where: "routes/executions.tsx", note: "Kartat live të ekzekutimeve ekzistojnë; jo ende widget-e të lëvizshme/persistente." },
+  { name: "Projects", state: "done", where: "lib/projects/", note: "Workspace, blueprint 7-hapësh, artefakte dhe status live funksionojnë në runtime." },
+  { name: "Project Storage", state: "partial", where: "lib/projects/store.ts", note: "Persistencë localStorage vetëm në pajisjen aktuale; mungon storage server-side, multi-user dhe backup." },
+  { name: "Plugins", state: "partial", where: "lib/integrations/", note: "Registry/capability layer është real, por disa plugin-e janë metadata/stub dhe duan invoke + test connection live." },
+  { name: "Swarm", state: "partial", where: "lib/agents/swarm.ts", note: "Routing, concurrency dhe agent bus punojnë; providerId i çdo roli nuk është ende një lidhje e certifikuar me provider të veçantë." },
+  { name: "Swarm subtasks", state: "partial", where: "lib/agents/swarm.ts", note: "API i delegimit dhe ndjekja ekzistojnë; built-in agents duhet të përdorin delegimin real në skenarë të certifikuar." },
+  { name: "Dream Memory", state: "partial", where: "lib/memory/", note: "Memory pipeline punon lokalisht; vector store është localStorage/in-memory dhe embedding default është hash lokal, jo semantic provider production." },
+  { name: "Self-evolving Skills", state: "partial", where: "lib/skills/engine.ts", note: "XP/nivele/mësime funksionojnë në runtime; mungon persistence server-side dhe governance/versioning i skill-eve." },
+  { name: "Goals", state: "done", where: "lib/projects/service.ts", note: "Qëllimi i projektit injektohet në execution context për build-in." },
+  { name: "Code generation", state: "done", where: "lib/gen/codegen.functions.ts", note: "Server function thërret BYOK, Lovable AI Gateway ose fallback real dhe ruan file artifacts; providerët individualë kërkojnë certifikim live." },
+  { name: "Provider Live Verification", state: "partial", where: "lib/gen/free-providers.ts", note: "Katalogu përfshin Z.ai, Kimi/OpenRouter, DeepAI, Groq, Cerebras, Mistral, Hugging Face, Ollama etj.; duhet test connection për endpoint/model/credential real." },
+  { name: "Cost Optimizer", state: "partial", where: "lib/cost/", note: "Routing/telemetri e kostos ekziston, por duhet reconciliim me usage/cost real të providerëve." },
+  { name: "Security (Vault, RBAC, Audit)", state: "partial", where: "lib/security/", note: "RBAC/audit/vault runtime ekzistojnë; BYOK dhe integration config ruhen ende në browser storage dhe nuk kanë KMS/server vault production." },
+  { name: "GitHub Single Source of Truth", state: "partial", where: "lib/integrations/plugins/github.ts", note: "Repo field + plugin contract ekzistojnë; invoke aktual nuk kryen ende commit/PR/review/merge real nga Leah." },
+  { name: "Deploy website me database", state: "partial", where: "lib/deploy/", note: "Pipeline krijon task-et build/test/database/deploy/health; target API calls dhe URL live nuk janë ende të implementuara/certifikuara." },
+  { name: "Claw (Web, Android, PC)", state: "planned", where: "—", note: "Kërkon agjent nativ jashtë shfletuesit; jo pjesë e runtime-it aktual." },
+  { name: "Group Chat me Claw", state: "planned", where: "lib/agents/bus.ts", note: "Bus-i i mesazheve ekziston; mungojnë Claw runtime dhe UI e bisedës në grup." },
 ];
 
 const ICONS: Record<State, typeof CheckCircle2> = { done: CheckCircle2, partial: Clock, planned: CircleDashed };
@@ -45,14 +47,14 @@ const LABEL: Record<State, string> = { done: "Gati", partial: "Pjesërisht", pla
 
 const SPRINTS = [
   "Sprint 1 — Orchestrator, Task Queue, Worker Pool, Execution Dashboard",
-  "Sprint 2 — Shared Context + Memory + Vector Retrieval",
-  "Sprint 3 — Multi-Agent Swarm + Priority Queue + Agent Bus",
-  "Sprint 4 — Workflow Engine (DAG) + Scheduler",
-  "Sprint 5 — Cost Optimizer + Telemetry",
-  "Sprint 6 — Security Layer (Vault, RBAC, Audit, Guard)",
-  "Sprint 7 — Project Workspace (Single Source of Truth)",
-  "Sprint 8 — Self-evolving Skills + AI Teams",
-  "Sprint 9 — Deployment Layer + Raporti Total",
+  "Sprint 2 — Shared Context + Memory + Vector Retrieval foundation",
+  "Sprint 3 — Multi-Agent Swarm + Priority Queue + Agent Bus foundation",
+  "Sprint 4 — Workflow Engine (DAG) + local runtime scheduler",
+  "Sprint 5 — Cost Optimizer + estimated telemetry",
+  "Sprint 6 — Security Layer foundation (Vault, RBAC, Audit, Guard)",
+  "Sprint 7 — Project Workspace foundation",
+  "Sprint 8 — Self-evolving Skills + AI Teams foundation",
+  "Sprint 9 — Deployment orchestration foundation + Runtime Truth Report",
 ];
 
 function ReportPage() {
@@ -63,7 +65,7 @@ function ReportPage() {
 
   return (
     <div className="px-6 md:px-10 py-8 md:py-12 max-w-6xl mx-auto">
-      <PageHeader eyebrow="Raporti Total" title="Statusi i plotë i Leah AI OS" description="Çdo aftësi e kërkuar, ku ndodhet në sistem dhe sa larg është realizimi i saj." />
+      <PageHeader eyebrow="Raporti Total — Runtime Truth" title="Statusi i verifikuar i Leah AI OS" description="Gati do të thotë funksionon në runtime. Pjesërisht do të thotë se foundation ekziston, por mungon persistence/provider/deploy/live proof. Asnjë status nuk quhet FULL LIVE pa provë reale." />
 
       <div className="grid grid-cols-3 gap-3 mb-8">
         {(["done", "partial", "planned"] as State[]).map((s) => (
@@ -93,7 +95,7 @@ function ReportPage() {
         })}
       </div>
 
-      <h2 className="mt-10 mb-3 text-lg font-semibold">Sprintet e përfunduara</h2>
+      <h2 className="mt-10 mb-3 text-lg font-semibold">Sprintet e ndërtuara</h2>
       <ol className="space-y-1 text-sm text-muted-foreground">
         {SPRINTS.map((s) => (
           <li key={s} className="flex items-start gap-2">
