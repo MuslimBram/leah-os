@@ -1,6 +1,8 @@
 // Free / low-cost OpenAI-compatible endpoints that the app can actually call.
 // Everything here is BYOK except `pollinations`, which needs no key at all and
-// is therefore the default "always works" fallback for real generation.
+// is therefore the default fallback for real generation. Provider quotas and
+// model availability can change; the UI must use the live Test Connection gate
+// before treating an entry as certified.
 
 export type FreeProvider = {
   id: string;
@@ -25,7 +27,18 @@ export const FREE_PROVIDERS: FreeProvider[] = [
     models: ["openai", "openai-large", "mistral", "qwen-coder"],
     needsKey: false,
     free: "Falas, pa çelës",
-    note: "Fallback-u i parazgjedhur kur nuk ka asnjë çelës të konfiguruar.",
+    note: "Fallback-u i parazgjedhur kur nuk ka asnjë çelës të konfiguruar; certifikoje me Test Connection para përdorimit kritik.",
+  },
+  {
+    id: "kimi",
+    name: "Kimi Code",
+    vendor: "Moonshot AI / Kimi",
+    baseUrl: "https://api.kimi.com/coding/v1",
+    models: ["kimi-for-coding", "kimi-k2-thinking-turbo"],
+    needsKey: true,
+    free: "Kimi plan / API key",
+    signupUrl: "https://www.kimi.com/",
+    note: "Kimi Code API; disponueshmëria dhe kuota varen nga llogaria/plani.",
   },
   {
     id: "zai",
@@ -34,18 +47,9 @@ export const FREE_PROVIDERS: FreeProvider[] = [
     baseUrl: "https://api.z.ai/api/paas/v4",
     models: ["glm-4.6", "glm-4.5-air", "glm-4-flash"],
     needsKey: true,
-    free: "glm-4-flash falas",
+    free: "API key / plan-dependent",
     signupUrl: "https://z.ai/manage-apikey/apikey-list",
-  },
-  {
-    id: "deepai",
-    name: "DeepAI",
-    vendor: "DeepAI",
-    baseUrl: "https://api.deepai.org/openai",
-    models: ["standard"],
-    needsKey: true,
-    free: "Kuotë falas ditore",
-    signupUrl: "https://deepai.org/dashboard/profile",
+    note: "Për GLM Coding Plan mund të nevojitet endpoint-i coding/paas/v4; përdor URL-në që jep llogaria jote.",
   },
   {
     id: "groq",
@@ -69,8 +73,9 @@ export const FREE_PROVIDERS: FreeProvider[] = [
       "moonshotai/kimi-k2:free",
     ],
     needsKey: true,
-    free: "Modele me sufiks :free",
+    free: "Modele :free kur ofrohen",
     signupUrl: "https://openrouter.ai/keys",
+    note: "Modelet free ndryshojnë; Test Connection verifikon modelin e zgjedhur në kohën e përdorimit.",
   },
   {
     id: "cerebras",
@@ -79,7 +84,7 @@ export const FREE_PROVIDERS: FreeProvider[] = [
     baseUrl: "https://api.cerebras.ai/v1",
     models: ["llama-3.3-70b", "qwen-3-coder-480b"],
     needsKey: true,
-    free: "Free tier ditor",
+    free: "Free tier / quota-dependent",
     signupUrl: "https://cloud.cerebras.ai",
   },
   {
@@ -89,7 +94,7 @@ export const FREE_PROVIDERS: FreeProvider[] = [
     baseUrl: "https://api.mistral.ai/v1",
     models: ["mistral-small-latest", "codestral-latest"],
     needsKey: true,
-    free: "Experiment tier falas",
+    free: "Experiment/quota-dependent",
     signupUrl: "https://console.mistral.ai/api-keys",
   },
   {
@@ -99,7 +104,7 @@ export const FREE_PROVIDERS: FreeProvider[] = [
     baseUrl: "https://router.huggingface.co/v1",
     models: ["Qwen/Qwen2.5-Coder-32B-Instruct", "meta-llama/Llama-3.3-70B-Instruct"],
     needsKey: true,
-    free: "Kredite falas mujore",
+    free: "Kredite/kuota sipas llogarisë",
     signupUrl: "https://huggingface.co/settings/tokens",
   },
   {
@@ -110,7 +115,7 @@ export const FREE_PROVIDERS: FreeProvider[] = [
     models: ["qwen2.5-coder:7b", "llama3.1:8b", "deepseek-coder-v2"],
     needsKey: false,
     free: "100% lokal, falas",
-    note: "Duhet të jetë duke punuar në makinën ku ekzekutohet serveri.",
+    note: "Duhet të jetë duke punuar në të njëjtën makinë ku ekzekutohet server runtime i Leah.",
   },
 ];
 
