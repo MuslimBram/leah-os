@@ -3,6 +3,12 @@ export type RouterCapability = "code" | "reasoning" | "chat";
 export type BillingMode = "byok" | "managed";
 export type RouterAttemptStatus = "succeeded" | "failed" | "unknown";
 
+export type RouterAttemptContext<T> = {
+  logicalRequestId: string;
+  attemptId: string;
+  candidate: RouterCandidate<T>;
+};
+
 export type RouterCandidate<T> = {
   providerId: string;
   model: string;
@@ -14,7 +20,8 @@ export type RouterCandidate<T> = {
   qualityRank: number;
   /** Optional hard input ceiling used to skip an unsafe fallback before any request. */
   maxInputTokens?: number;
-  run: () => Promise<T>;
+  /** Receives the exact logical/attempt IDs that evidence and side effects must use. */
+  run: (context: RouterAttemptContext<T>) => Promise<T>;
   validate: (value: T) => boolean;
 };
 
@@ -28,12 +35,6 @@ export type RouterAttempt = {
   ok: boolean;
   latencyMs: number;
   error?: string;
-};
-
-export type RouterAttemptContext<T> = {
-  logicalRequestId: string;
-  attemptId: string;
-  candidate: RouterCandidate<T>;
 };
 
 export type RouterAttemptSettlement<T> = RouterAttemptContext<T> & {
@@ -159,7 +160,7 @@ export async function routeProvider<T>(input: {
     const startedAt = Date.now();
     let producedValue: T | undefined;
     try {
-      producedValue = await candidate.run();
+      producedValue = await candidate.run(context);
       if (!candidate.validate(producedValue)) throw new Error("Provider returned an invalid or empty result");
     } catch (error) {
       const unknown = error instanceof ProviderOutcomeUnknownError;
