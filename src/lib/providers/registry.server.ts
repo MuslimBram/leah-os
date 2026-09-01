@@ -8,6 +8,7 @@ export type ProviderRegistryEntry = {
   baseUrl: string;
   apiKeyEnv: string;
   modelEnv: string;
+  contextTokensEnv: string;
 };
 
 const REGISTRY: Record<CertifiedProviderId, ProviderRegistryEntry> = {
@@ -17,6 +18,7 @@ const REGISTRY: Record<CertifiedProviderId, ProviderRegistryEntry> = {
     baseUrl: "https://api.openai.com/v1",
     apiKeyEnv: "LEAH_OPENAI_API_KEY",
     modelEnv: "LEAH_OPENAI_MODEL",
+    contextTokensEnv: "LEAH_OPENAI_CONTEXT_TOKENS",
   },
   anthropic: {
     id: "anthropic",
@@ -24,6 +26,7 @@ const REGISTRY: Record<CertifiedProviderId, ProviderRegistryEntry> = {
     baseUrl: "https://api.anthropic.com/v1",
     apiKeyEnv: "LEAH_ANTHROPIC_API_KEY",
     modelEnv: "LEAH_ANTHROPIC_MODEL",
+    contextTokensEnv: "LEAH_ANTHROPIC_CONTEXT_TOKENS",
   },
   gemini: {
     id: "gemini",
@@ -31,6 +34,7 @@ const REGISTRY: Record<CertifiedProviderId, ProviderRegistryEntry> = {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     apiKeyEnv: "LEAH_GEMINI_API_KEY",
     modelEnv: "LEAH_GEMINI_MODEL",
+    contextTokensEnv: "LEAH_GEMINI_CONTEXT_TOKENS",
   },
   deepseek: {
     id: "deepseek",
@@ -38,6 +42,7 @@ const REGISTRY: Record<CertifiedProviderId, ProviderRegistryEntry> = {
     baseUrl: "https://api.deepseek.com",
     apiKeyEnv: "LEAH_DEEPSEEK_API_KEY",
     modelEnv: "LEAH_DEEPSEEK_MODEL",
+    contextTokensEnv: "LEAH_DEEPSEEK_CONTEXT_TOKENS",
   },
   kimi: {
     id: "kimi",
@@ -45,6 +50,7 @@ const REGISTRY: Record<CertifiedProviderId, ProviderRegistryEntry> = {
     baseUrl: "https://api.kimi.com/coding/v1",
     apiKeyEnv: "LEAH_KIMI_API_KEY",
     modelEnv: "LEAH_KIMI_MODEL",
+    contextTokensEnv: "LEAH_KIMI_CONTEXT_TOKENS",
   },
   zai: {
     id: "zai",
@@ -52,6 +58,7 @@ const REGISTRY: Record<CertifiedProviderId, ProviderRegistryEntry> = {
     baseUrl: "https://api.z.ai/api/paas/v4",
     apiKeyEnv: "LEAH_ZAI_API_KEY",
     modelEnv: "LEAH_ZAI_MODEL",
+    contextTokensEnv: "LEAH_ZAI_CONTEXT_TOKENS",
   },
 };
 
@@ -78,22 +85,39 @@ export function assertProviderEndpoint(providerId: string, url: string): void {
   }
 }
 
+function optionalPositiveInteger(envName: string): number | undefined {
+  const raw = process.env[envName]?.trim();
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${envName} must be a positive integer`);
+  }
+  return value;
+}
+
 export function configuredManagedProvider(providerId: string): {
   entry: ProviderRegistryEntry;
   apiKey: string;
   model: string;
+  maxInputTokens?: number;
 } | null {
   const entry = getProviderRegistryEntry(providerId);
   const apiKey = process.env[entry.apiKeyEnv]?.trim() ?? "";
   const model = process.env[entry.modelEnv]?.trim() ?? "";
   if (!apiKey || !model) return null;
-  return { entry, apiKey, model };
+  return {
+    entry,
+    apiKey,
+    model,
+    maxInputTokens: optionalPositiveInteger(entry.contextTokensEnv),
+  };
 }
 
 export function listConfiguredManagedProviders(): Array<{
   entry: ProviderRegistryEntry;
   apiKey: string;
   model: string;
+  maxInputTokens?: number;
 }> {
   return (Object.keys(REGISTRY) as CertifiedProviderId[])
     .map((id) => configuredManagedProvider(id))
