@@ -6,16 +6,12 @@ export const githubPlugin: IntegrationPlugin = {
   vendor: "GitHub",
   category: "vcs",
   capabilities: ["vcs", "deploy"],
-  status: "stable",
-  description: "Single source of truth për repos, PRs dhe Actions. OAuth ose Personal Access Token.",
+  status: "beta",
+  description: "Single Source of Truth për repo/branch/commit/PR/CI. Kredenciali ruhet vetëm server-side si LEAH_GITHUB_TOKEN; browser-i nuk mban PAT.",
   docsUrl: "https://docs.github.com/en/rest",
   configSchema: [
-    { key: "token", label: "Personal Access Token", type: "password", required: true, help: "Scopes: repo, workflow" },
-    { key: "owner", label: "Default owner/org", type: "text" },
+    { key: "owner", label: "Default owner/org", type: "text", required: true },
+    { key: "repo", label: "Default repository", type: "text", required: true },
   ],
   accent: "oklch(0.55 0.02 260)",
-  invoke: async ({ capability, payload }, { config }) => {
-    if (!config.token) return { ok: false, message: "Mungon GitHub token" };
-    return { ok: true, data: { capability, payload, owner: config.owner ?? null } };
-  },
 };

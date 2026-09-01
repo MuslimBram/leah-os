@@ -1,8 +1,9 @@
-// Deployment history — persisted client-side, subscribable.
+// Deployment UI cache — still client-side until Pulse/LEAH durable deployment audit is
+// wired. It may mirror provider truth, but it is never the source of provider success.
 
 import type { Deployment, DeployStatus } from "./types";
 
-const KEY = "leah:deployments:v1";
+const KEY = "leah:deployments:v2";
 
 function read(): Deployment[] {
   if (typeof window === "undefined") return [];
@@ -49,11 +50,34 @@ export function deploymentForExecution(executionId: string): Deployment | undefi
   return deployments.find((d) => d.executionId === executionId);
 }
 
-export function setDeploymentStatus(id: string, status: DeployStatus) {
+export function setDeploymentStatus(id: string, status: DeployStatus, error?: string) {
   const row = deployments.find((d) => d.id === id);
   if (!row) return;
   row.status = status;
+  row.error = error;
   if (status === "succeeded" || status === "failed") row.finishedAt = Date.now();
+  notify();
+}
+
+export function recordProviderDeployment(id: string, input: {
+  providerDeploymentId: string;
+  sourceSha: string;
+  providerState: string;
+  url: string | null;
+  healthCheckedAt?: number;
+  status: DeployStatus;
+  error?: string;
+}) {
+  const row = deployments.find((d) => d.id === id);
+  if (!row) return;
+  row.providerDeploymentId = input.providerDeploymentId;
+  row.sourceSha = input.sourceSha;
+  row.providerState = input.providerState;
+  row.url = input.url;
+  row.healthCheckedAt = input.healthCheckedAt;
+  row.status = input.status;
+  row.error = input.error;
+  if (input.status === "succeeded" || input.status === "failed") row.finishedAt = Date.now();
   notify();
 }
 
