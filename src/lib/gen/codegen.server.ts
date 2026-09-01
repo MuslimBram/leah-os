@@ -1,7 +1,7 @@
-import { streamText } from "ai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createLovableAiGatewayProvider } from "../ai-gateway.server";
-import { routeProvider, type RouterCandidate, type RouterMode } from "../router/code-router";
+import { extractGeneratedFiles } from "./generated-files";
+import { callConfiguredManagedProvider, validateProviderText, type ProviderTextResult } from "../providers/client.server";
+import { listConfiguredManagedProviders } from "../providers/registry.server";
+import { routeProvider, type BillingMode, type RouterCandidate, type RouterMode } from "../router/code-router";
 
 export type RoutedCodeRequest = {
   kind: string;
@@ -10,12 +10,8 @@ export type RoutedCodeRequest = {
   prompt?: string;
   role?: string;
   routerMode?: RouterMode;
-  byok?: {
-    providerId: string;
-    apiKey?: string;
-    baseUrl?: string;
-    model?: string;
-  } | null;
+  billingMode?: BillingMode;
+  logicalRequestId?: string;
 };
 
 const SYSTEM = `Ti je një inxhinier softuerësh brenda LEAH AI OS.
@@ -38,70 +34,84 @@ ${(input.prompt ?? "").slice(0, 12000)}
 Prodho implementimin real tani.`;
 }
 
+function roughTokenEstimate(text: string): number {
+  // Conservative pre-flight estimate only. Provider-reported usage remains authoritative after the call.
+  return Math.max(1, Math.ceil(text.length / 3));
+}
+
+function providerOrder(): string[] {
+  return (process.env["LEAH_MANAGED_PROVIDER_ORDER"] ?? "openai,anthropic,gemini,deepseek,kimi,zai")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function managedCandidates(messages: { system: string; user: string }): RouterCandidate<ProviderTextResult>[] {
+  const configured = listConfiguredManagedProviders();
+  const order = providerOrder();
+  return configured.map(({ entry, model }) => {
+    const index = order.indexOf(entry.id);
+    const orderRank = index < 0 ? order.length : index;
+    return {
+      providerId: entry.id,
+      model,
+      billingMode: "managed" as const,
+      capabilities: ["code", "reasoning", "chat"] as const,
+      costRank: 1,
+      qualityRank: Math.max(1, 100 - orderRank * 5),
+      run: () => callConfiguredManagedProvider(entry.id, messages),
+      validate: (value: ProviderTextResult) => {
+        if (!validateProviderText(value)) return false;
+        try {
+          extractGeneratedFiles(value.text);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    };
+  });
+}
+
+/**
+ * Privileged server-internal generation primitive.
+ *
+ * BYOK is deliberately fail-closed here until the Pulse Vault/session binding
+ * supplies a workspace-authoritative credential. Browser/localStorage keys are
+ * not accepted by MR7A and a BYOK request never falls back to managed spend.
+ */
 export async function generateCodeRouted(input: RoutedCodeRequest) {
-  const messages = [{ role: "user" as const, content: userPrompt(input) }];
-  const candidates: RouterCandidate<string>[] = [];
-
-  if (input.byok?.baseUrl) {
-    const provider = createOpenAICompatible({
-      name: input.byok.providerId,
-      baseURL: input.byok.baseUrl,
-      headers: input.byok.apiKey ? { Authorization: `Bearer ${input.byok.apiKey}` } : {},
-    });
-    const model = input.byok.model || "gpt-4o-mini";
-    candidates.push({
-      providerId: input.byok.providerId,
-      model,
-      capabilities: ["code", "chat"],
-      costRank: 0,
-      qualityRank: 90,
-      run: async () => {
-        const result = streamText({ model: provider(model), system: SYSTEM, messages });
-        return await result.text;
-      },
-      validate: (text) => text.trim().length > 0,
-    });
+  const billingMode = input.billingMode ?? "managed";
+  if (billingMode === "byok") {
+    throw new Error("BYOK generation requires a Pulse Vault-bound workspace credential");
   }
 
-  const lovableKey = process.env["LOVABLE_API_KEY"];
-  if (lovableKey) {
-    const gateway = createLovableAiGatewayProvider(lovableKey);
-    const model = "google/gemini-3.6-flash";
-    candidates.push({
-      providerId: "lovable-gateway",
-      model,
-      capabilities: ["code", "reasoning", "chat"],
-      costRank: 2,
-      qualityRank: 100,
-      run: async () => {
-        const result = streamText({ model: gateway(model), system: SYSTEM, messages });
-        return await result.text;
-      },
-      validate: (text) => text.trim().length > 0,
-    });
+  const messages = { system: SYSTEM, user: userPrompt(input) };
+  const candidates = managedCandidates(messages);
+  if (candidates.length === 0) {
+    throw new Error("No MR7A managed provider is configured server-side");
   }
 
-  const pollinations = createOpenAICompatible({ name: "pollinations", baseURL: "https://text.pollinations.ai/openai" });
-  candidates.push({
-    providerId: "pollinations",
-    model: "openai",
-    capabilities: ["code", "chat"],
-    costRank: 0,
-    qualityRank: 60,
-    run: async () => {
-      const result = streamText({ model: pollinations("openai"), system: SYSTEM, messages });
-      return await result.text;
-    },
-    validate: (text) => text.trim().length > 0,
+  const estimatedInputTokens = roughTokenEstimate(`${SYSTEM}\n${messages.user}`);
+  const routed = await routeProvider({
+    capability: "code",
+    billingMode,
+    mode: input.routerMode ?? "balanced",
+    logicalRequestId: input.logicalRequestId,
+    estimatedInputTokens,
+    candidates,
   });
 
-  const routed = await routeProvider({ capability: "code", mode: input.routerMode ?? "balanced", candidates });
   return {
-    text: routed.value,
+    text: routed.value.text,
     provider: routed.providerId,
     model: routed.model,
+    billingMode: routed.billingMode,
+    logicalRequestId: routed.logicalRequestId,
+    providerRequestId: routed.value.providerRequestId,
+    usage: routed.value.usage,
     mock: false as const,
     routerMode: input.routerMode ?? "balanced",
-    attempts: routed.attempts.map(({ providerId, model, ok, latencyMs }) => ({ providerId, model, ok, latencyMs })),
+    attempts: routed.attempts,
   };
 }
