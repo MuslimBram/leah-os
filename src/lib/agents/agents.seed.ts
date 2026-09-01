@@ -4,25 +4,16 @@
 import { registerAgent } from "./registry";
 import type { Agent, AgentContext, AgentResult } from "./types";
 import { generateCode } from "@/lib/gen/codegen.functions";
-import { activeByok } from "@/lib/gen/byok-store";
 import { addArtifact, parseFiles } from "@/lib/gen/artifacts";
-import { getFreeProvider } from "@/lib/gen/free-providers";
 
-/** Real runner: calls a live model and stores the generated files. */
+/**
+ * Browser/runtime runner. Managed generation is intentionally unavailable until
+ * the Pulse -> LEAH session/workspace/RBAC boundary is wired to the server
+ * primitive. No localStorage API key or endpoint is ever forwarded from here.
+ */
 function makeRunner(agent: Omit<Agent, "run">) {
   return async (ctx: AgentContext): Promise<AgentResult> => {
-    ctx.log(`${agent.name} mori detyrën (${ctx.kind}) — po thërret modelin…`);
-
-    const byokCfg = activeByok();
-    const spec = byokCfg ? getFreeProvider(byokCfg.providerId) : undefined;
-    const byok = byokCfg
-      ? {
-          providerId: byokCfg.providerId,
-          apiKey: byokCfg.apiKey,
-          baseUrl: byokCfg.baseUrl || spec?.baseUrl,
-          model: byokCfg.model || spec?.models[0],
-        }
-      : null;
+    ctx.log(`${agent.name} mori detyrën (${ctx.kind}) — po kërkon provider të autorizuar…`);
 
     let res: { text: string; provider: string; model: string };
     try {
@@ -33,15 +24,11 @@ function makeRunner(agent: Omit<Agent, "run">) {
           description: ctx.description,
           prompt: ctx.prompt,
           role: agent.role,
-          byok,
         },
       });
     } catch (err) {
-      // A provider outage is a failed task, not a successful "offline" result.
-      // The orchestrator will apply its normal retry/backoff policy and expose
-      // the failure truthfully to the execution UI.
       const message = err instanceof Error ? err.message : String(err);
-      ctx.log(`Modeli nuk u arrit: ${message}`);
+      ctx.log(`Gjenerimi u refuzua/dështoi: ${message}`);
       throw new Error(`AI provider unavailable for ${agent.name}: ${message}`);
     }
 
