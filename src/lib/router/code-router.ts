@@ -39,6 +39,7 @@ export type RouterAttemptContext<T> = {
 export type RouterAttemptSettlement<T> = RouterAttemptContext<T> & {
   status: RouterAttemptStatus;
   latencyMs: number;
+  /** Present when the provider returned a response, even if LEAH validation rejected it. */
   value?: T;
   error?: unknown;
 };
@@ -156,10 +157,10 @@ export async function routeProvider<T>(input: {
     }
 
     const startedAt = Date.now();
-    let value: T;
+    let producedValue: T | undefined;
     try {
-      value = await candidate.run();
-      if (!candidate.validate(value)) throw new Error("Provider returned an invalid or empty result");
+      producedValue = await candidate.run();
+      if (!candidate.validate(producedValue)) throw new Error("Provider returned an invalid or empty result");
     } catch (error) {
       const unknown = error instanceof ProviderOutcomeUnknownError;
       const attempt: RouterAttempt = {
@@ -179,6 +180,7 @@ export async function routeProvider<T>(input: {
           ...context,
           status: attempt.status,
           latencyMs: attempt.latencyMs,
+          value: producedValue,
           error,
         });
       } catch (settlementError) {
@@ -189,8 +191,6 @@ export async function routeProvider<T>(input: {
         );
       }
 
-      // A timeout/connection-loss can still mean the provider completed and billed.
-      // Falling back here could double-spend and later double-materialize output.
       if (unknown) {
         throw new RouterTerminalError(
           `Provider outcome unknown for ${candidate.providerId}/${candidate.model}; reconciliation required before retry or fallback`,
@@ -217,7 +217,7 @@ export async function routeProvider<T>(input: {
         ...context,
         status: "succeeded",
         latencyMs: attempt.latencyMs,
-        value,
+        value: producedValue,
       });
     } catch (settlementError) {
       throw new RouterTerminalError(
@@ -229,7 +229,7 @@ export async function routeProvider<T>(input: {
 
     return {
       logicalRequestId,
-      value,
+      value: producedValue,
       providerId: candidate.providerId,
       model: candidate.model,
       billingMode: candidate.billingMode,
