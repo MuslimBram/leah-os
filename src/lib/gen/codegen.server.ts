@@ -70,7 +70,6 @@ Prodho implementimin real tani.`;
 }
 
 function roughTokenEstimate(text: string): number {
-  // Conservative pre-flight estimate only. Provider-reported usage remains authoritative after the call.
   return Math.max(1, Math.ceil(text.length / 3));
 }
 
@@ -125,14 +124,6 @@ function errorCode(error: unknown): string {
   return "provider_failure";
 }
 
-/**
- * Privileged server-internal generation primitive.
- *
- * BYOK remains fail-closed until Pulse Vault resolves a workspace-bound credential.
- * Managed mode requires an active task lease, atomically reserves quota, persists
- * attempt evidence before the outbound call, and settles usage before any caller may
- * materialize the generated output.
- */
 export async function generateCodeRouted(input: RoutedCodeRequest) {
   const billingMode = input.billingMode ?? "managed";
   if (billingMode === "byok") {
@@ -145,9 +136,7 @@ export async function generateCodeRouted(input: RoutedCodeRequest) {
   const authority = input.authority;
   const messages = { system: SYSTEM, user: userPrompt(input) };
   const candidates = managedCandidates(messages);
-  if (candidates.length === 0) {
-    throw new Error("No MR7A managed provider is configured server-side");
-  }
+  if (candidates.length === 0) throw new Error("No MR7A managed provider is configured server-side");
 
   const estimatedInputTokens = roughTokenEstimate(`${SYSTEM}\n${messages.user}`);
   const estimatedOutputTokens = outputReservation(input);
@@ -179,10 +168,7 @@ export async function generateCodeRouted(input: RoutedCodeRequest) {
             provider: candidate.providerId,
             model: candidate.model,
             reservationId: reservation.id,
-            metadata: {
-              estimated_input_tokens: estimatedInputTokens,
-              estimated_output_tokens: estimatedOutputTokens,
-            },
+            metadata: { estimated_input_tokens: estimatedInputTokens, estimated_output_tokens: estimatedOutputTokens },
           });
         } catch (error) {
           await releaseManagedReservation({ ...authority, reservationId: reservation.id }).catch(() => undefined);
@@ -212,11 +198,7 @@ export async function generateCodeRouted(input: RoutedCodeRequest) {
           },
         });
 
-        if (settlement.status === "unknown") {
-          // Keep the reservation until reconciliation/reaper; releasing it could admit
-          // new spend while this provider may already have completed and billed.
-          return;
-        }
+        if (settlement.status === "unknown") return;
 
         if (value) {
           await finalizeManagedUsage({
@@ -236,22 +218,22 @@ export async function generateCodeRouted(input: RoutedCodeRequest) {
             },
           });
         } else {
-          // Known HTTP/network failure with no provider result: no model usage to settle.
           await releaseManagedReservation({ ...authority, reservationId: reservation.id });
         }
       },
     },
   });
 
+  const value = routed.value as ProviderTextResult;
   return {
-    text: routed.value.text,
+    text: value.text,
     provider: routed.providerId,
     model: routed.model,
     billingMode: routed.billingMode,
     logicalRequestId: routed.logicalRequestId,
     canonicalAttemptId: routed.canonicalAttemptId,
-    providerRequestId: routed.value.providerRequestId,
-    usage: routed.value.usage,
+    providerRequestId: value.providerRequestId,
+    usage: value.usage,
     mock: false as const,
     routerMode: input.routerMode ?? "balanced",
     attempts: routed.attempts,
