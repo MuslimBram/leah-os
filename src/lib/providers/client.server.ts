@@ -81,11 +81,11 @@ async function fetchKnownOutcome(
   try {
     return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   } catch (error) {
-    const name = error instanceof Error ? error.name : "";
-    if (name === "AbortError" || name === "TimeoutError") {
-      throw new ProviderOutcomeUnknownError(`${providerId} timed out after request dispatch`);
-    }
-    throw new Error(`${providerId} network failure`);
+    const name = error instanceof Error ? error.name : "transport_error";
+    // Once fetch() has been dispatched, a local timeout/socket failure cannot prove
+    // that the provider did not receive/complete/bill the request. Fail closed as
+    // unknown so the router cannot double-spend via retry/fallback.
+    throw new ProviderOutcomeUnknownError(`${providerId} transport outcome unknown (${name})`);
   }
 }
 
@@ -95,9 +95,10 @@ async function checkedJson(providerId: string, response: Response): Promise<Reco
     const value = await response.json();
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid JSON object");
     return value as Record<string, unknown>;
-  } catch (error) {
-    if (error instanceof ProviderHttpError) throw error;
-    throw new Error(`${providerId} returned malformed JSON`);
+  } catch {
+    // HTTP success means the provider may already have processed and billed the call.
+    // A broken/truncated response is not safe to retry or fall back automatically.
+    throw new ProviderOutcomeUnknownError(`${providerId} returned an unreadable successful response`);
   }
 }
 
