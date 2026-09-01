@@ -2,8 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { z } from "zod";
-import { createLovableAiGatewayProvider } from "../ai-gateway.server";
-import { routeProvider, type RouterCandidate } from "../router/code-router";
+import { generateCodeRouted } from "./codegen.server";
 
 const GenInput = z.object({
   kind: z.string(),
@@ -26,26 +25,6 @@ const ProviderTestInput = z.object({
   baseUrl: z.string().url(),
   model: z.string().min(1),
 });
-
-const SYSTEM = `Ti je një inxhinier softuerësh brenda LEAH AI OS.
-Prodho GJITHMONË kod real dhe të plotë, jo përshkrime abstrakte.
-Rregullat:
-- Kthe 1-3 file konkretë, secili në një bllok kodi me tri backtick.
-- Përpara çdo blloku shkruaj rrugën e file-it, p.sh. **src/routes/api/users.ts**.
-- Kodi duhet të jetë i ekzekutueshëm, pa "TODO" të zbrazëta.
-- Në fund shto 2-4 rreshta shënime të shkurtra në shqip.`;
-
-function buildUserPrompt(d: z.infer<typeof GenInput>) {
-  return `Roli: ${d.role}
-Kategoria e detyrës: ${d.kind}
-Detyra: ${d.title}
-Detaje: ${d.description}
-
-Kontekst i projektit:
-${d.prompt.slice(0, 12000)}
-
-Prodho implementimin real tani.`;
-}
 
 function openAiCompatibleProvider(input: z.infer<typeof ProviderTestInput>) {
   return createOpenAICompatible({
@@ -72,70 +51,4 @@ export const testCodeProvider = createServerFn({ method: "POST" })
 
 export const generateCode = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => GenInput.parse(input))
-  .handler(async ({ data }) => {
-    const messages = [{ role: "user" as const, content: buildUserPrompt(data) }];
-    const candidates: RouterCandidate<string>[] = [];
-
-    if (data.byok?.baseUrl) {
-      const provider = createOpenAICompatible({
-        name: data.byok.providerId,
-        baseURL: data.byok.baseUrl,
-        headers: data.byok.apiKey ? { Authorization: `Bearer ${data.byok.apiKey}` } : {},
-      });
-      const model = data.byok.model || "gpt-4o-mini";
-      candidates.push({
-        providerId: data.byok.providerId,
-        model,
-        capabilities: ["code", "chat"],
-        costRank: 0,
-        qualityRank: 90,
-        run: async () => {
-          const result = streamText({ model: provider(model), system: SYSTEM, messages });
-          return await result.text;
-        },
-        validate: (text) => text.trim().length > 0,
-      });
-    }
-
-    const lovableKey = process.env["LOVABLE_API_KEY"];
-    if (lovableKey) {
-      const gateway = createLovableAiGatewayProvider(lovableKey);
-      const model = "google/gemini-3.6-flash";
-      candidates.push({
-        providerId: "lovable-gateway",
-        model,
-        capabilities: ["code", "reasoning", "chat"],
-        costRank: 2,
-        qualityRank: 100,
-        run: async () => {
-          const result = streamText({ model: gateway(model), system: SYSTEM, messages });
-          return await result.text;
-        },
-        validate: (text) => text.trim().length > 0,
-      });
-    }
-
-    const pollinations = createOpenAICompatible({ name: "pollinations", baseURL: "https://text.pollinations.ai/openai" });
-    candidates.push({
-      providerId: "pollinations",
-      model: "openai",
-      capabilities: ["code", "chat"],
-      costRank: 0,
-      qualityRank: 60,
-      run: async () => {
-        const result = streamText({ model: pollinations("openai"), system: SYSTEM, messages });
-        return await result.text;
-      },
-      validate: (text) => text.trim().length > 0,
-    });
-
-    const routed = await routeProvider({ capability: "code", mode: data.routerMode, candidates });
-    return {
-      text: routed.value,
-      provider: routed.providerId,
-      model: routed.model,
-      mock: false,
-      routerMode: data.routerMode,
-      attempts: routed.attempts.map(({ providerId, model, ok, latencyMs }) => ({ providerId, model, ok, latencyMs })),
-    };
-  });
+  .handler(({ data }) => generateCodeRouted(data));
