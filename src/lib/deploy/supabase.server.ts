@@ -12,10 +12,13 @@ const ALWAYS_FORBIDDEN: Array<{ re: RegExp; label: string }> = [
   { re: /\bdrop\s+database\b/i, label: "DROP DATABASE" },
   { re: /\balter\s+system\b/i, label: "ALTER SYSTEM" },
   { re: /\b(create|alter|drop)\s+role\b/i, label: "role administration" },
+  { re: /\b(?:set|reset)\s+role\b/i, label: "role switching" },
   { re: /\bset\s+session\s+authorization\b/i, label: "SET SESSION AUTHORIZATION" },
   { re: /\bcopy\b[\s\S]{0,500}\bprogram\b/i, label: "COPY PROGRAM" },
   { re: /\bpg_(read|write|ls)_file\b/i, label: "server filesystem access" },
   { re: /\blo_(import|export)\s*\(/i, label: "large-object filesystem access" },
+  { re: /\b(?:set|reset)\s+(?:(?:local|session)\s+)?(?:statement_timeout|lock_timeout|idle_in_transaction_session_timeout|transaction_timeout)\b/i, label: "migration timeout override" },
+  { re: /\bset_config\s*\(\s*['"](?:statement_timeout|lock_timeout|idle_in_transaction_session_timeout|transaction_timeout)['"]/i, label: "migration timeout override" },
 ];
 
 const DESTRUCTIVE: Array<{ re: RegExp; label: string }> = [
@@ -23,6 +26,9 @@ const DESTRUCTIVE: Array<{ re: RegExp; label: string }> = [
   { re: /\btruncate\s+(table\s+)?/i, label: "TRUNCATE" },
   { re: /\balter\s+table\b[\s\S]{0,2000}\bdrop\s+column\b/i, label: "DROP COLUMN" },
 ];
+
+const TRANSACTION_CONTROL_RE = /(?:^|;)\s*(?:begin(?:\s+(?:work|transaction))?|start\s+transaction|commit(?:\s+prepared)?|end(?:\s+(?:work|transaction))?|rollback(?:\s+(?:work|transaction|to\s+(?:savepoint\s+)?[A-Za-z_][A-Za-z0-9_$]*|prepared))?|savepoint\s+[A-Za-z_][A-Za-z0-9_$]*|release\s+(?:savepoint\s+)?[A-Za-z_][A-Za-z0-9_$]*|prepare\s+transaction)\b/im;
+const TRANSACTION_MODE_RE = /(?:^|;)\s*set\s+(?:local\s+)?transaction\b|(?:^|;)\s*set\s+session\s+characteristics\s+as\s+transaction\b/im;
 
 export type SupabaseMigrationInput = {
   projectRef: string;
@@ -80,9 +86,76 @@ async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function maskQuotedSql(sql: string): string {
+  let out = "";
+  let i = 0;
+  const mask = (value: string) => value.replace(/[^\r\n]/g, " ");
+
+  while (i < sql.length) {
+    if (sql.startsWith("--", i)) {
+      const end = sql.indexOf("\n", i + 2);
+      const stop = end === -1 ? sql.length : end;
+      out += mask(sql.slice(i, stop));
+      i = stop;
+      continue;
+    }
+    if (sql.startsWith("/*", i)) {
+      const start = i;
+      let depth = 1;
+      i += 2;
+      while (i < sql.length && depth > 0) {
+        if (sql.startsWith("/*", i)) { depth += 1; i += 2; continue; }
+        if (sql.startsWith("*/", i)) { depth -= 1; i += 2; continue; }
+        i += 1;
+      }
+      if (depth !== 0) throw new Error("Migration SQL contains an unterminated block comment");
+      out += mask(sql.slice(start, i));
+      continue;
+    }
+    const ch = sql[i];
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      const start = i;
+      i += 1;
+      let closed = false;
+      while (i < sql.length) {
+        if (sql[i] === "\\" && quote === "'") { i += 2; continue; }
+        if (sql[i] === quote) {
+          if (sql[i + 1] === quote) { i += 2; continue; }
+          i += 1;
+          closed = true;
+          break;
+        }
+        i += 1;
+      }
+      if (!closed) throw new Error("Migration SQL contains an unterminated quoted value");
+      out += mask(sql.slice(start, i));
+      continue;
+    }
+    if (ch === "$") {
+      const tag = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i))?.[0];
+      if (tag) {
+        const start = i;
+        const close = sql.indexOf(tag, i + tag.length);
+        if (close === -1) throw new Error("Migration SQL contains an unterminated dollar-quoted body");
+        i = close + tag.length;
+        out += mask(sql.slice(start, i));
+        continue;
+      }
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
 function assertMigrationPolicy(sql: string, allowDestructive: boolean) {
   if (!sql.trim()) throw new Error("Migration SQL is empty");
   if (/^\s*\\/m.test(sql)) throw new Error("psql meta-commands are not allowed in remote migrations");
+  const structuralSql = maskQuotedSql(sql);
+  if (TRANSACTION_CONTROL_RE.test(structuralSql) || TRANSACTION_MODE_RE.test(structuralSql)) {
+    throw new Error("Migration cannot control or escape the LEAH transaction wrapper");
+  }
   for (const rule of ALWAYS_FORBIDDEN) {
     if (rule.re.test(sql)) throw new Error(`Migration blocked by safety policy: ${rule.label}`);
   }
@@ -132,26 +205,18 @@ function firstRow(payload: unknown): Record<string, unknown> | null {
   return null;
 }
 
+function isMissingLedgerError(message: string): boolean {
+  return /(deploy_migration_ledger|leah_internal)/i.test(message) && /(does not exist|42P01|3F000)/i.test(message);
+}
+
 async function ledgerRow(project: string, version: string): Promise<Record<string, unknown> | null> {
   const query = `select version, content_hash, commit_sha, migration_path, applied_at::text as applied_at
     from leah_internal.deploy_migration_ledger where version=${sqlLiteral(version)} limit 1;`;
   try {
-    // This internal schema is intentionally not granted to the read-only API role.
     return firstRow(await runQuery(project, query, false));
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (message.includes("deploy_migration_ledger") || message.includes("leah_internal")) return null;
-    throw error;
-  }
-}
-
-async function latestLedgerVersion(project: string): Promise<string | null> {
-  try {
-    const row = firstRow(await runQuery(project, "select max(version) as version from leah_internal.deploy_migration_ledger;", false));
-    return typeof row?.version === "string" ? row.version : null;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    if (message.includes("deploy_migration_ledger") || message.includes("leah_internal")) return null;
+    if (isMissingLedgerError(message)) return null;
     throw error;
   }
 }
@@ -160,7 +225,7 @@ function wrapMigration(input: { version: string; hash: string; commitSha: string
   return `begin;
 set local lock_timeout='10s';
 set local statement_timeout='120s';
-select pg_advisory_xact_lock(hashtextextended(${sqlLiteral(`leah:migration:${input.version}`)},0));
+select pg_advisory_xact_lock(hashtextextended('leah:migrations:global',0));
 create schema if not exists leah_internal;
 revoke all on schema leah_internal from public, anon, authenticated;
 create table if not exists leah_internal.deploy_migration_ledger (
@@ -172,12 +237,16 @@ create table if not exists leah_internal.deploy_migration_ledger (
 );
 revoke all on leah_internal.deploy_migration_ledger from public, anon, authenticated;
 do $leah_preflight$
-declare _hash text;
+declare _hash text; _latest text;
 begin
   select content_hash into _hash from leah_internal.deploy_migration_ledger where version=${sqlLiteral(input.version)};
   if _hash is not null then
     if _hash <> ${sqlLiteral(input.hash)} then raise exception 'LEAH_MIGRATION_HASH_CONFLICT:%',${sqlLiteral(input.version)}; end if;
     raise exception 'LEAH_MIGRATION_ALREADY_APPLIED:%',${sqlLiteral(input.version)};
+  end if;
+  select max(version) into _latest from leah_internal.deploy_migration_ledger;
+  if _latest is not null and ${sqlLiteral(input.version)} < _latest then
+    raise exception 'LEAH_MIGRATION_OUT_OF_ORDER:%:%',${sqlLiteral(input.version)},_latest;
   end if;
 end;
 $leah_preflight$;
@@ -216,11 +285,9 @@ export async function applyGithubMigrationToSupabase(input: SupabaseMigrationInp
   const before = await ledgerRow(target.ref, version);
   if (before) {
     if (String(before.content_hash) !== hash) throw new Error(`Migration ${version} already exists with a different content hash`);
+    if (String(before.migration_path) !== path) throw new Error(`Migration ${version} already exists with a different migration path`);
     return { provider: "supabase", projectRef: target.ref, targetPolicy: target.policy, version, migrationPath: path, commitSha: String(before.commit_sha || sha), contentHash: hash, replay: true, appliedAt: String(before.applied_at || "") };
   }
-
-  const latest = await latestLedgerVersion(target.ref);
-  if (latest && version < latest) throw new Error(`Out-of-order migration blocked: ${version} is older than ${latest}`);
 
   try {
     await runQuery(target.ref, wrapMigration({ version, hash, commitSha: sha, path, sql: file.content }), false);
