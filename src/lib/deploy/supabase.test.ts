@@ -87,7 +87,62 @@ describe("Supabase GitHub migration adapter", () => {
     expect(supabaseCalls).toBe(0);
   });
 
-  it("applies an immutable GitHub migration and accepts success only after ledger hash/SHA proof", async () => {
+  it("blocks migration transaction escape before any Supabase write", async () => {
+    process.env["LEAH_GITHUB_TOKEN"] = "gh-test";
+    process.env["LEAH_SUPABASE_PROJECT_POLICY"] = JSON.stringify({ [ref]: "preview" });
+    let supabaseCalls = 0;
+    globalThis.fetch = (async (input) => {
+      const url = String(input);
+      if (url.startsWith("https://api.github.com/")) return json(githubFile("create table public.a(id int); commit; create table public.b(id int);"));
+      if (url.startsWith("https://api.supabase.com/")) supabaseCalls += 1;
+      return json({});
+    }) as typeof fetch;
+    await expect(applyGithubMigrationToSupabase({ projectRef: ref, githubOwner: "acme", githubRepo: "app", commitSha: sha, migrationPath: path }))
+      .rejects.toThrow("cannot control or escape");
+    expect(supabaseCalls).toBe(0);
+  });
+
+  it("blocks attempts to disable the wrapper timeout", async () => {
+    process.env["LEAH_GITHUB_TOKEN"] = "gh-test";
+    process.env["LEAH_SUPABASE_PROJECT_POLICY"] = JSON.stringify({ [ref]: "preview" });
+    globalThis.fetch = (async (input) => {
+      const url = String(input);
+      if (url.startsWith("https://api.github.com/")) return json(githubFile("set local statement_timeout = 0; select 1;"));
+      return json({ message: "unexpected Supabase call" }, 500);
+    }) as typeof fetch;
+    await expect(applyGithubMigrationToSupabase({ projectRef: ref, githubOwner: "acme", githubRepo: "app", commitSha: sha, migrationPath: path }))
+      .rejects.toThrow("migration timeout override");
+  });
+
+  it("allows BEGIN/END inside a dollar-quoted procedural body without treating it as transaction control", async () => {
+    process.env["LEAH_GITHUB_TOKEN"] = "gh-test";
+    process.env["LEAH_SUPABASE_ACCESS_TOKEN"] = "sbp_test";
+    process.env["LEAH_SUPABASE_PROJECT_POLICY"] = JSON.stringify({ [ref]: "preview" });
+    const sql = "do $$ begin perform 1; end $$;";
+    let applyCalls = 0;
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("https://api.github.com/")) return json(githubFile(sql));
+      const body = JSON.parse(String(init?.body ?? "{}")) as { query?: string };
+      const query = body.query ?? "";
+      if (query.includes("where version=") && applyCalls === 0) return json({ message: "relation leah_internal.deploy_migration_ledger does not exist" }, 500);
+      if (query.includes("create schema if not exists leah_internal")) {
+        applyCalls += 1;
+        return json([], 201);
+      }
+      if (query.includes("where version=")) {
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sql));
+        const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+        return json([{ version: "20260901180000", content_hash: hash, commit_sha: sha, migration_path: path, applied_at: "2026-09-01T08:00:00Z" }], 201);
+      }
+      return json({ message: "unexpected" }, 500);
+    }) as typeof fetch;
+    const result = await applyGithubMigrationToSupabase({ projectRef: ref, githubOwner: "acme", githubRepo: "app", commitSha: sha, migrationPath: path });
+    expect(result.replay).toBe(false);
+    expect(applyCalls).toBe(1);
+  });
+
+  it("applies an immutable GitHub migration only inside the serialized wrapper and accepts success after ledger proof", async () => {
     process.env["LEAH_GITHUB_TOKEN"] = "gh-test";
     process.env["LEAH_SUPABASE_ACCESS_TOKEN"] = "sbp_test";
     process.env["LEAH_SUPABASE_PROJECT_POLICY"] = JSON.stringify({ [ref]: "preview" });
@@ -107,13 +162,14 @@ describe("Supabase GitHub migration adapter", () => {
           missingLedgerReads += 1;
           return json({ message: "relation leah_internal.deploy_migration_ledger does not exist" }, 500);
         }
-        if (query.includes("select max(version)")) return json({ message: "schema leah_internal does not exist" }, 500);
         if (query.includes("create schema if not exists leah_internal")) {
           applyCalls += 1;
           expect(query).toContain(sql);
           expect(query).toContain(hash);
           expect(query).toContain(sha);
-          return json([] , 201);
+          expect(query).toContain("pg_advisory_xact_lock(hashtextextended('leah:migrations:global',0))");
+          expect(query).toContain("select max(version) into _latest");
+          return json([], 201);
         }
         if (query.includes("where version=")) {
           return json([{ version: "20260901180000", content_hash: hash, commit_sha: sha, migration_path: path, applied_at: "2026-09-01T08:00:00Z" }], 201);
