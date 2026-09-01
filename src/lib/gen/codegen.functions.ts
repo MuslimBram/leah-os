@@ -3,7 +3,7 @@ import { streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "../ai-gateway.server";
-import { routeProvider, type RouterCandidate, type RouterMode } from "../router/code-router";
+import { routeProvider, type RouterCandidate } from "../router/code-router";
 
 const GenInput = z.object({
   kind: z.string(),
@@ -12,14 +12,12 @@ const GenInput = z.object({
   prompt: z.string().default(""),
   role: z.string().default("engineer"),
   routerMode: z.enum(["economy", "balanced", "quality"]).default("balanced"),
-  byok: z
-    .object({
-      providerId: z.string(),
-      apiKey: z.string().optional(),
-      baseUrl: z.string().optional(),
-      model: z.string().optional(),
-    })
-    .nullish(),
+  byok: z.object({
+    providerId: z.string(),
+    apiKey: z.string().optional(),
+    baseUrl: z.string().optional(),
+    model: z.string().optional(),
+  }).nullish(),
 });
 
 const ProviderTestInput = z.object({
@@ -57,15 +55,6 @@ function openAiCompatibleProvider(input: z.infer<typeof ProviderTestInput>) {
   });
 }
 
-async function completeText(model: Parameters<typeof streamText>[0]["model"], messages: Array<{ role: "user"; content: string }>) {
-  const result = streamText({ model, system: SYSTEM, messages });
-  return await result.text;
-}
-
-/**
- * Live provider probe. A configured provider is not considered usable until
- * this call returns a non-empty model response from the exact endpoint/model.
- */
 export const testCodeProvider = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ProviderTestInput.parse(input))
   .handler(async ({ data }) => {
@@ -78,13 +67,7 @@ export const testCodeProvider = createServerFn({ method: "POST" })
     });
     const text = (await result.text).trim();
     if (!text) throw new Error("Provider returned an empty response");
-    return {
-      ok: true,
-      provider: data.providerId,
-      model: data.model,
-      latencyMs: Date.now() - startedAt,
-      sample: text.slice(0, 120),
-    };
+    return { ok: true, provider: data.providerId, model: data.model, latencyMs: Date.now() - startedAt, sample: text.slice(0, 120) };
   });
 
 export const generateCode = createServerFn({ method: "POST" })
@@ -93,8 +76,6 @@ export const generateCode = createServerFn({ method: "POST" })
     const messages = [{ role: "user" as const, content: buildUserPrompt(data) }];
     const candidates: RouterCandidate<string>[] = [];
 
-    // BYOK is preferred in balanced/economy mode because the external provider cost
-    // is owned by the user's key rather than hidden inside LEAH managed compute.
     if (data.byok?.baseUrl) {
       const provider = createOpenAICompatible({
         name: data.byok.providerId,
@@ -108,7 +89,10 @@ export const generateCode = createServerFn({ method: "POST" })
         capabilities: ["code", "chat"],
         costRank: 0,
         qualityRank: 90,
-        run: () => completeText(provider(model), messages),
+        run: async () => {
+          const result = streamText({ model: provider(model), system: SYSTEM, messages });
+          return await result.text;
+        },
         validate: (text) => text.trim().length > 0,
       });
     }
@@ -123,31 +107,29 @@ export const generateCode = createServerFn({ method: "POST" })
         capabilities: ["code", "reasoning", "chat"],
         costRank: 2,
         qualityRank: 100,
-        run: () => completeText(gateway(model), messages),
+        run: async () => {
+          const result = streamText({ model: gateway(model), system: SYSTEM, messages });
+          return await result.text;
+        },
         validate: (text) => text.trim().length > 0,
       });
     }
 
-    const pollinations = createOpenAICompatible({
-      name: "pollinations",
-      baseURL: "https://text.pollinations.ai/openai",
-    });
+    const pollinations = createOpenAICompatible({ name: "pollinations", baseURL: "https://text.pollinations.ai/openai" });
     candidates.push({
       providerId: "pollinations",
       model: "openai",
       capabilities: ["code", "chat"],
       costRank: 0,
       qualityRank: 60,
-      run: () => completeText(pollinations("openai"), messages),
+      run: async () => {
+        const result = streamText({ model: pollinations("openai"), system: SYSTEM, messages });
+        return await result.text;
+      },
       validate: (text) => text.trim().length > 0,
     });
 
-    const routed = await routeProvider({
-      capability: "code",
-      mode: data.routerMode as RouterMode,
-      candidates,
-    });
-
+    const routed = await routeProvider({ capability: "code", mode: data.routerMode, candidates });
     return {
       text: routed.value,
       provider: routed.providerId,
