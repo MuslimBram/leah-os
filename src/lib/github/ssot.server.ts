@@ -1,3 +1,4 @@
+import { normalizeGeneratedPath } from "../gen/generated-files";
 import type {
   GithubCommitProvenance,
   GithubCommitResult,
@@ -9,7 +10,7 @@ import type {
 } from "./types";
 
 const GITHUB_API = "https://api.github.com";
-const ACCEPTED_CHECK_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
+const ACCEPTED_NON_REQUIRED_CHECK_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
 const NAME_RE = /^[A-Za-z0-9_.-]{1,100}$/;
 const BRANCH_RE = /^[A-Za-z0-9][A-Za-z0-9._\/-]{0,199}$/;
 const SHA_RE = /^[0-9a-f]{40}$/i;
@@ -38,6 +39,17 @@ function assertSha(value: string, label = "SHA"): string {
   const trimmed = value.trim();
   if (!SHA_RE.test(trimmed)) throw new Error(`Invalid GitHub ${label}`);
   return trimmed.toLowerCase();
+}
+
+function requiredChecks(values: string[]): string[] {
+  if (!Array.isArray(values) || values.length < 1 || values.length > 25) {
+    throw new Error("At least one explicit required CI check is mandatory");
+  }
+  const clean = values.map((value) => value.trim());
+  if (clean.some((value) => !value || value.length > 200 || /[\r\n]/.test(value))) {
+    throw new Error("Invalid required CI check name");
+  }
+  return Array.from(new Set(clean));
 }
 
 function repoPath(owner: string, repo: string): string {
@@ -118,27 +130,35 @@ function normalizeFiles(files: GithubGeneratedFile[]): GithubGeneratedFile[] {
   }
   const seen = new Set<string>();
   return files.map((file) => {
-    const path = file.path.trim().replace(/^\/+/, "");
-    if (!path || path.length > 500 || path.includes("..") || path.includes("\\")) {
-      throw new Error("Invalid generated file path");
-    }
+    const path = normalizeGeneratedPath(file.path);
     if (seen.has(path)) throw new Error(`Duplicate generated file path: ${path}`);
     seen.add(path);
-    if (typeof file.content !== "string" || file.content.length > 1_000_000) {
+    if (typeof file.content !== "string" || new TextEncoder().encode(file.content).byteLength > 1_000_000) {
       throw new Error(`Generated file exceeds 1 MB: ${path}`);
     }
     return { path, content: file.content };
   });
 }
 
+function trailerValue(value: string | undefined, label: string): string | null {
+  if (!value) return null;
+  const clean = value.trim();
+  if (!clean || clean.length > 200 || /[\r\n]/.test(clean)) throw new Error(`Invalid GitHub ${label} provenance`);
+  return clean;
+}
+
 function commitMessage(message: string, provenance: GithubCommitProvenance | undefined): string {
   const clean = message.trim();
   if (!clean || clean.length > 500) throw new Error("Invalid GitHub commit message");
+  const executionId = trailerValue(provenance?.executionId, "execution");
+  const taskId = trailerValue(provenance?.taskId, "task");
+  const provider = trailerValue(provenance?.provider, "provider");
+  const model = trailerValue(provenance?.model, "model");
   const trailers = [
-    provenance?.executionId ? `LEAH-Execution: ${provenance.executionId}` : null,
-    provenance?.taskId ? `LEAH-Task: ${provenance.taskId}` : null,
-    provenance?.provider ? `LEAH-Provider: ${provenance.provider}` : null,
-    provenance?.model ? `LEAH-Model: ${provenance.model}` : null,
+    executionId ? `LEAH-Execution: ${executionId}` : null,
+    taskId ? `LEAH-Task: ${taskId}` : null,
+    provider ? `LEAH-Provider: ${provider}` : null,
+    model ? `LEAH-Model: ${model}` : null,
   ].filter(Boolean);
   return trailers.length ? `${clean}\n\n${trailers.join("\n")}` : clean;
 }
@@ -189,15 +209,19 @@ export async function commitGithubFiles(input: {
     }),
   });
 
+  const commitSha = assertSha(created.sha);
   await github(`${base}/git/refs/heads/${encodeURIComponent(branch)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sha: created.sha, force: false }),
+    body: JSON.stringify({ sha: commitSha, force: false }),
   });
+  const verifiedRef = await github<{ object: { sha: string } }>(`${base}/git/ref/heads/${encodeURIComponent(branch)}`);
+  if (assertSha(verifiedRef.object.sha) !== commitSha) throw new Error("GitHub branch head mismatch after commit update");
+
   return {
     branch,
     previousHeadSha: expectedHeadSha,
-    commitSha: assertSha(created.sha),
+    commitSha,
     treeSha: tree.sha,
     htmlUrl: created.html_url,
   };
@@ -246,11 +270,13 @@ export async function inspectGithubReleaseGate(input: {
   repo: string;
   pullNumber: number;
   expectedHeadSha: string;
+  requiredChecks: string[];
   requireApproval?: boolean;
 }): Promise<GithubReleaseGate> {
   const base = repoPath(input.owner, input.repo);
   if (!Number.isInteger(input.pullNumber) || input.pullNumber < 1) throw new Error("Invalid GitHub pull request number");
   const expectedHeadSha = assertSha(input.expectedHeadSha, "expected head SHA");
+  const required = requiredChecks(input.requiredChecks);
   const pr = await github<{
     number: number;
     state: string;
@@ -263,20 +289,31 @@ export async function inspectGithubReleaseGate(input: {
 
   const checks = await github<{
     total_count: number;
-    check_runs: Array<{ name: string; status: string; conclusion: string | null }>;
-  }>(`${base}/commits/${expectedHeadSha}/check-runs?per_page=100`);
+    check_runs: Array<{ id: number; name: string; status: string; conclusion: string | null }>;
+  }>(`${base}/commits/${expectedHeadSha}/check-runs?filter=latest&per_page=100`);
   const statuses = await github<{
     state: string;
     statuses: Array<{ context: string; state: string }>;
   }>(`${base}/commits/${expectedHeadSha}/status`);
   const reviews = await github<Array<{ user?: { login?: string }; state: string }>>(`${base}/pulls/${input.pullNumber}/reviews?per_page=100`);
 
-  const failedChecks = checks.check_runs
-    .filter((run) => run.status !== "completed" || !run.conclusion || !ACCEPTED_CHECK_CONCLUSIONS.has(run.conclusion))
+  const latestByName = new Map<string, { id: number; name: string; status: string; conclusion: string | null }>();
+  for (const run of checks.check_runs) {
+    const current = latestByName.get(run.name);
+    if (!current || run.id > current.id) latestByName.set(run.name, run);
+  }
+  const missingRequired = required.filter((name) => !latestByName.has(name));
+  const unsuccessfulRequired = required
+    .map((name) => latestByName.get(name))
+    .filter((run): run is { id: number; name: string; status: string; conclusion: string | null } => !!run)
+    .filter((run) => run.status !== "completed" || run.conclusion !== "success")
     .map((run) => `${run.name}:${run.status}/${run.conclusion ?? "none"}`);
-  const pending = checks.check_runs.filter((run) => run.status !== "completed").length;
-  const passedChecks = checks.check_runs
-    .filter((run) => run.status === "completed" && !!run.conclusion && ACCEPTED_CHECK_CONCLUSIONS.has(run.conclusion))
+  const failedChecks = Array.from(latestByName.values())
+    .filter((run) => run.status !== "completed" || !run.conclusion || !ACCEPTED_NON_REQUIRED_CHECK_CONCLUSIONS.has(run.conclusion))
+    .map((run) => `${run.name}:${run.status}/${run.conclusion ?? "none"}`);
+  const pending = Array.from(latestByName.values()).filter((run) => run.status !== "completed").length;
+  const passedChecks = Array.from(latestByName.values())
+    .filter((run) => run.status === "completed" && run.conclusion === "success")
     .map((run) => run.name);
   const failedStatuses = statuses.statuses.filter((s) => s.state !== "success").map((s) => `${s.context}:${s.state}`);
 
@@ -291,7 +328,10 @@ export async function inspectGithubReleaseGate(input: {
   if (actualHead !== expectedHeadSha) reason = "PR head moved";
   else if (pr.state !== "open") reason = "PR is not open";
   else if (pr.draft) reason = "PR is draft";
-  else if (checks.total_count < 1) reason = "No real CI check runs found";
+  else if (pr.mergeable === null) reason = "PR mergeability is not resolved";
+  else if (pr.mergeable === false) reason = "PR is not mergeable";
+  else if (missingRequired.length > 0) reason = `Required CI checks missing: ${missingRequired.join(", ")}`;
+  else if (unsuccessfulRequired.length > 0) reason = "Required CI checks are not successful";
   else if (failedChecks.length > 0 || pending > 0) reason = "CI checks are not fully successful";
   else if (statuses.statuses.length > 0 && (statuses.state !== "success" || failedStatuses.length > 0)) reason = "Commit statuses are not fully successful";
   else if (input.requireApproval && approvals < 1) reason = "Required approval missing";
@@ -307,7 +347,12 @@ export async function inspectGithubReleaseGate(input: {
       baseSha: assertSha(pr.base.sha),
       mergeable: pr.mergeable,
     },
-    checks: { total: checks.total_count, pending, failed: failedChecks, passed: passedChecks },
+    checks: {
+      total: checks.total_count,
+      pending,
+      failed: [...missingRequired.map((name) => `${name}:missing`), ...unsuccessfulRequired, ...failedChecks],
+      passed: passedChecks,
+    },
     statuses: { total: statuses.statuses.length, state: statuses.state, failed: failedStatuses },
     approvals,
   };
@@ -318,6 +363,7 @@ export async function mergeGithubPullRequest(input: {
   repo: string;
   pullNumber: number;
   expectedHeadSha: string;
+  requiredChecks: string[];
   requireApproval?: boolean;
   method?: "merge" | "squash" | "rebase";
 }): Promise<GithubMergeResult> {
