@@ -1,7 +1,37 @@
-import { streamText } from "ai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createLovableAiGatewayProvider } from "../ai-gateway.server";
-import { routeProvider, type RouterCandidate, type RouterMode } from "../router/code-router";
+import { extractGeneratedFiles } from "./generated-files";
+import {
+  ProviderHttpError,
+  callConfiguredManagedProvider,
+  validateProviderText,
+  type ProviderTextResult,
+  type ProviderUsage,
+} from "../providers/client.server";
+import {
+  beginProviderAttempt,
+  finishProviderAttempt,
+  type AttemptAuthority,
+} from "../providers/attempt-ledger.server";
+import {
+  finalizeManagedUsage,
+  releaseManagedReservation,
+  reserveManagedTokens,
+  type ManagedReservation,
+} from "../providers/usage-meter.server";
+import { listConfiguredManagedProviders } from "../providers/registry.server";
+import {
+  callPulseByokProvider,
+  listPulseByokProviders,
+  PulseByokProviderError,
+  settlePulseByokAttempt,
+} from "../providers/pulse-provider-proxy.server";
+import {
+  ProviderOutcomeUnknownError,
+  routeProvider,
+  type BillingMode,
+  type RouterCandidate,
+  type RouterCapability,
+  type RouterMode,
+} from "../router/code-router";
 
 export type RoutedCodeRequest = {
   kind: string;
@@ -10,12 +40,12 @@ export type RoutedCodeRequest = {
   prompt?: string;
   role?: string;
   routerMode?: RouterMode;
-  byok?: {
-    providerId: string;
-    apiKey?: string;
-    baseUrl?: string;
-    model?: string;
-  } | null;
+  billingMode?: BillingMode;
+  logicalRequestId?: string;
+  /** Server-derived worker authority. Never accept these values from a browser. */
+  authority?: AttemptAuthority;
+  /** Conservative output reservation/estimate; provider-reported usage replaces it. */
+  estimatedOutputTokens?: number;
 };
 
 const SYSTEM = `Ti je një inxhinier softuerësh brenda LEAH AI OS.
@@ -25,6 +55,17 @@ Rregullat:
 - Përpara çdo blloku shkruaj rrugën e file-it, p.sh. **src/routes/api/users.ts**.
 - Kodi duhet të jetë i ekzekutueshëm, pa "TODO" të zbrazëta.
 - Në fund shto 2-4 rreshta shënime të shkurtra në shqip.`;
+
+const UNAVAILABLE_USAGE: ProviderUsage = {
+  inputTokens: null,
+  outputTokens: null,
+  totalTokens: null,
+  usageSource: "unavailable",
+};
+
+// When an exact model context limit is not server-configured, MR7 uses a deliberately
+// conservative admission ceiling instead of assuming an unbounded context window.
+const CONSERVATIVE_INPUT_LIMIT = 8_192;
 
 function userPrompt(input: RoutedCodeRequest): string {
   return `Roli: ${input.role ?? "engineer"}
@@ -38,70 +79,230 @@ ${(input.prompt ?? "").slice(0, 12000)}
 Prodho implementimin real tani.`;
 }
 
-export async function generateCodeRouted(input: RoutedCodeRequest) {
-  const messages = [{ role: "user" as const, content: userPrompt(input) }];
-  const candidates: RouterCandidate<string>[] = [];
+function roughTokenEstimate(text: string): number {
+  return Math.max(1, Math.ceil(text.length / 3));
+}
 
-  if (input.byok?.baseUrl) {
-    const provider = createOpenAICompatible({
-      name: input.byok.providerId,
-      baseURL: input.byok.baseUrl,
-      headers: input.byok.apiKey ? { Authorization: `Bearer ${input.byok.apiKey}` } : {},
-    });
-    const model = input.byok.model || "gpt-4o-mini";
-    candidates.push({
-      providerId: input.byok.providerId,
+function outputReservation(input: RoutedCodeRequest): number {
+  const value = input.estimatedOutputTokens ?? Number(process.env["LEAH_CODEGEN_ESTIMATED_OUTPUT_TOKENS"] ?? 8192);
+  if (!Number.isSafeInteger(value) || value < 256 || value > 200_000) {
+    throw new Error("Invalid LEAH code-generation output reservation");
+  }
+  return value;
+}
+
+function providerOrder(): string[] {
+  return (process.env["LEAH_PROVIDER_ORDER"] ?? process.env["LEAH_MANAGED_PROVIDER_ORDER"] ?? "openai,anthropic,gemini,deepseek,kimi,zai")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function validatesGeneratedCode(value: ProviderTextResult): boolean {
+  if (!validateProviderText(value)) return false;
+  try {
+    extractGeneratedFiles(value.text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function managedCandidates(messages: { system: string; user: string }): RouterCandidate<ProviderTextResult>[] {
+  const configured = listConfiguredManagedProviders();
+  const order = providerOrder();
+  return configured.map(({ entry, model, maxInputTokens }) => {
+    const index = order.indexOf(entry.id);
+    const orderRank = index < 0 ? order.length : index;
+    return {
+      providerId: entry.id,
       model,
-      capabilities: ["code", "chat"],
+      billingMode: "managed" as const,
+      capabilities: ["code", "reasoning", "chat"] as RouterCapability[],
+      costRank: 1,
+      qualityRank: Math.max(1, 100 - orderRank * 5),
+      maxInputTokens: maxInputTokens ?? CONSERVATIVE_INPUT_LIMIT,
+      run: () => callConfiguredManagedProvider(entry.id, messages),
+      validate: validatesGeneratedCode,
+    };
+  });
+}
+
+async function byokCandidates(
+  authority: AttemptAuthority,
+  messages: { system: string; user: string },
+): Promise<RouterCandidate<ProviderTextResult>[]> {
+  const catalog = await listPulseByokProviders(authority);
+  const order = providerOrder();
+  return catalog.map(({ providerId, model }) => {
+    const index = order.indexOf(providerId);
+    const orderRank = index < 0 ? order.length : index;
+    return {
+      providerId,
+      model,
+      billingMode: "byok" as const,
+      capabilities: ["code", "reasoning", "chat"] as RouterCapability[],
       costRank: 0,
-      qualityRank: 90,
-      run: async () => {
-        const result = streamText({ model: provider(model), system: SYSTEM, messages });
-        return await result.text;
-      },
-      validate: (text) => text.trim().length > 0,
-    });
+      qualityRank: Math.max(1, 100 - orderRank * 5),
+      maxInputTokens: CONSERVATIVE_INPUT_LIMIT,
+      run: (context) => callPulseByokProvider({
+        ...authority,
+        logicalRequestId: context.logicalRequestId,
+        attemptId: context.attemptId,
+        providerId,
+        expectedModel: model,
+        system: messages.system,
+        user: messages.user,
+      }),
+      validate: validatesGeneratedCode,
+    };
+  });
+}
+
+function errorCode(error: unknown): string {
+  if (error instanceof ProviderHttpError || error instanceof PulseByokProviderError) return error.code;
+  if (error instanceof ProviderOutcomeUnknownError) return "outcome_unknown";
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (message.includes("invalid or empty result")) return "invalid_generated_output";
+  return "provider_failure";
+}
+
+export async function generateCodeRouted(input: RoutedCodeRequest) {
+  const billingMode = input.billingMode ?? "managed";
+  if (!input.authority?.taskId || !input.authority.leaseToken) {
+    throw new Error("Provider generation requires server-derived task lease authority");
   }
 
-  const lovableKey = process.env["LOVABLE_API_KEY"];
-  if (lovableKey) {
-    const gateway = createLovableAiGatewayProvider(lovableKey);
-    const model = "google/gemini-3.6-flash";
-    candidates.push({
-      providerId: "lovable-gateway",
-      model,
-      capabilities: ["code", "reasoning", "chat"],
-      costRank: 2,
-      qualityRank: 100,
-      run: async () => {
-        const result = streamText({ model: gateway(model), system: SYSTEM, messages });
-        return await result.text;
-      },
-      validate: (text) => text.trim().length > 0,
-    });
+  const authority = input.authority;
+  const messages = { system: SYSTEM, user: userPrompt(input) };
+  const candidates = billingMode === "byok"
+    ? await byokCandidates(authority, messages)
+    : managedCandidates(messages);
+  if (candidates.length === 0) {
+    throw new Error(billingMode === "byok"
+      ? "No validated Pulse Vault BYOK provider is available for this task"
+      : "No MR7 managed provider is configured server-side");
   }
 
-  const pollinations = createOpenAICompatible({ name: "pollinations", baseURL: "https://text.pollinations.ai/openai" });
-  candidates.push({
-    providerId: "pollinations",
-    model: "openai",
-    capabilities: ["code", "chat"],
-    costRank: 0,
-    qualityRank: 60,
-    run: async () => {
-      const result = streamText({ model: pollinations("openai"), system: SYSTEM, messages });
-      return await result.text;
+  const estimatedInputTokens = roughTokenEstimate(`${SYSTEM}\n${messages.user}`);
+  const estimatedOutputTokens = outputReservation(input);
+  const requestedTokens = estimatedInputTokens + estimatedOutputTokens;
+  const reservations = new Map<string, ManagedReservation>();
+
+  const routed = await routeProvider({
+    capability: "code",
+    billingMode,
+    mode: input.routerMode ?? "balanced",
+    logicalRequestId: input.logicalRequestId,
+    estimatedInputTokens,
+    candidates,
+    lifecycle: billingMode === "managed" ? {
+      beforeAttempt: async ({ logicalRequestId, attemptId, candidate }) => {
+        const reservation = await reserveManagedTokens({
+          ...authority,
+          eventKey: `provider:${logicalRequestId}:${attemptId}`,
+          requestedTokens,
+          ttlSeconds: 300,
+        });
+        reservations.set(attemptId, reservation);
+        try {
+          await beginProviderAttempt({
+            ...authority,
+            logicalRequestId,
+            attemptId,
+            billingMode: "managed",
+            provider: candidate.providerId,
+            model: candidate.model,
+            reservationId: reservation.id,
+            metadata: { estimated_input_tokens: estimatedInputTokens, estimated_output_tokens: estimatedOutputTokens },
+          });
+        } catch (error) {
+          await releaseManagedReservation({ ...authority, reservationId: reservation.id }).catch(() => undefined);
+          reservations.delete(attemptId);
+          throw error;
+        }
+      },
+      afterAttempt: async (settlement) => {
+        const reservation = reservations.get(settlement.attemptId);
+        if (!reservation) throw new Error("Provider attempt reservation missing");
+        const value = settlement.value;
+        const usage = value?.usage ?? UNAVAILABLE_USAGE;
+
+        await finishProviderAttempt({
+          ...authority,
+          attemptId: settlement.attemptId,
+          outcome: settlement.status,
+          providerRequestId: value?.providerRequestId ?? null,
+          usage,
+          costMicros: null,
+          errorCode: settlement.status === "succeeded" ? null : errorCode(settlement.error),
+          latencyMs: settlement.latencyMs,
+          canonicalResult: settlement.status === "succeeded",
+          metadata: {
+            finish_reason: value?.finishReason ?? null,
+            generated_output_valid: settlement.status === "succeeded",
+          },
+        });
+
+        if (settlement.status === "unknown") return;
+
+        if (value) {
+          await finalizeManagedUsage({
+            ...authority,
+            reservation,
+            provider: settlement.candidate.providerId,
+            model: settlement.candidate.model,
+            usage,
+            estimatedInputTokens,
+            estimatedOutputTokens,
+            costMicros: null,
+            metadata: {
+              logical_request_id: settlement.logicalRequestId,
+              attempt_id: settlement.attemptId,
+              provider_request_id: value.providerRequestId,
+              attempt_outcome: settlement.status,
+            },
+          });
+        } else {
+          await releaseManagedReservation({ ...authority, reservationId: reservation.id });
+        }
+      },
+    } : {
+      // Pulse proxy itself creates the durable attempt row before provider dispatch.
+      // A known provider failure/unknown outcome is settled by Pulse. A successful
+      // response is settled here only after LEAH's canonical generated-file validation.
+      afterAttempt: async (settlement) => {
+        if (!settlement.value) return;
+        await settlePulseByokAttempt({
+          ...authority,
+          attemptId: settlement.attemptId,
+          outcome: settlement.status === "succeeded" ? "succeeded" : "failed",
+          value: settlement.value,
+          latencyMs: settlement.latencyMs,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          errorCode: settlement.status === "succeeded" ? null : errorCode(settlement.error),
+          metadata: {
+            logical_request_id: settlement.logicalRequestId,
+            generated_output_valid: settlement.status === "succeeded",
+          },
+        });
+      },
     },
-    validate: (text) => text.trim().length > 0,
   });
 
-  const routed = await routeProvider({ capability: "code", mode: input.routerMode ?? "balanced", candidates });
+  const value = routed.value as ProviderTextResult;
   return {
-    text: routed.value,
+    text: value.text,
     provider: routed.providerId,
     model: routed.model,
+    billingMode: routed.billingMode,
+    logicalRequestId: routed.logicalRequestId,
+    canonicalAttemptId: routed.canonicalAttemptId,
+    providerRequestId: value.providerRequestId,
+    usage: value.usage,
     mock: false as const,
     routerMode: input.routerMode ?? "balanced",
-    attempts: routed.attempts.map(({ providerId, model, ok, latencyMs }) => ({ providerId, model, ok, latencyMs })),
+    attempts: routed.attempts,
   };
 }
