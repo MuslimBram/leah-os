@@ -60,20 +60,33 @@ function usageValue(value: unknown): ProviderUsage {
   };
 }
 
-async function pulseProxy(body: Record<string, unknown>): Promise<{ response: Response; data: Record<string, unknown> }> {
+async function pulseProxy(
+  body: Record<string, unknown>,
+  options: { providerMayHaveDispatched?: boolean } = {},
+): Promise<{ response: Response; data: Record<string, unknown> }> {
   for (const forbidden of ["workspace_id", "workspaceId", "api_key", "apiKey", "base_url", "baseUrl", "secret_id", "secretId"]) {
     if (Object.prototype.hasOwnProperty.call(body, forbidden)) {
       throw new Error(`${forbidden} must never be supplied to the Pulse provider proxy`);
     }
   }
-  const response = await fetch(proxyUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Leah-Worker-Secret": workerSecret(),
-    },
-    body: JSON.stringify(body),
-  });
+
+  let response: Response;
+  try {
+    response = await fetch(proxyUrl(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Leah-Worker-Secret": workerSecret(),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    if (options.providerMayHaveDispatched) {
+      throw new ProviderOutcomeUnknownError("Pulse BYOK proxy transport outcome unknown after dispatch");
+    }
+    throw error;
+  }
+
   const data = await response.json().catch(() => ({})) as Record<string, unknown>;
   return { response, data };
 }
@@ -120,7 +133,7 @@ export async function callPulseByokProvider(input: AttemptAuthority & {
     provider: input.providerId,
     system: input.system,
     user: input.user,
-  });
+  }, { providerMayHaveDispatched: true });
 
   const errorCode = typeof data.error === "string" ? data.error : `proxy_http_${response.status}`;
   if (!response.ok) {
@@ -134,11 +147,9 @@ export async function callPulseByokProvider(input: AttemptAuthority & {
   const model = typeof data.model === "string" ? data.model.trim() : "";
   const text = typeof data.text === "string" ? data.text.trim() : "";
   if (provider !== input.providerId || model !== input.expectedModel) {
-    // The provider call already happened and Pulse has durable evidence. Never retry
-    // automatically if the binding changed between catalog selection and dispatch.
     throw new ProviderOutcomeUnknownError(`${input.providerId} BYOK catalog changed after dispatch`);
   }
-  if (!text) throw new Error(`${input.providerId} returned an empty BYOK result`);
+  if (!text) throw new ProviderOutcomeUnknownError(`${input.providerId} successful BYOK response was unreadable`);
 
   return {
     providerId: input.providerId,
@@ -148,4 +159,50 @@ export async function callPulseByokProvider(input: AttemptAuthority & {
     usage: usageValue(data.usage),
     finishReason: typeof data.finish_reason === "string" ? data.finish_reason : null,
   };
+}
+
+export async function settlePulseByokAttempt(input: AttemptAuthority & {
+  attemptId: string;
+  outcome: "succeeded" | "failed";
+  value: ProviderTextResult;
+  latencyMs: number;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  errorCode?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<Record<string, unknown>> {
+  const providerUsage = input.value.usage;
+  const hasProviderUsage = providerUsage.usageSource === "provider" &&
+    providerUsage.inputTokens !== null && providerUsage.outputTokens !== null;
+  const inputTokens = hasProviderUsage ? providerUsage.inputTokens! : input.estimatedInputTokens;
+  const outputTokens = hasProviderUsage ? providerUsage.outputTokens! : input.estimatedOutputTokens;
+  const usageSource = hasProviderUsage ? "provider" : "estimated";
+
+  const { response, data } = await pulseProxy({
+    action: "settle",
+    task_id: input.taskId,
+    lease_token: input.leaseToken,
+    attempt_id: input.attemptId,
+    outcome: input.outcome,
+    provider_request_id: input.value.providerRequestId,
+    usage_source: usageSource,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: inputTokens + outputTokens,
+    error_code: input.errorCode ?? null,
+    latency_ms: input.latencyMs,
+    canonical_result: input.outcome === "succeeded",
+    metadata: {
+      ...(input.metadata ?? {}),
+      finish_reason: input.value.finishReason,
+      application_validation: input.outcome === "succeeded" ? "accepted" : "rejected",
+      provider_usage_source: providerUsage.usageSource,
+    },
+  });
+
+  if (!response.ok) {
+    const code = typeof data.error === "string" ? data.error : `proxy_http_${response.status}`;
+    throw new Error(`BYOK settlement failed: ${code.slice(0, 160)}`);
+  }
+  return objectValue(data.settlement);
 }
