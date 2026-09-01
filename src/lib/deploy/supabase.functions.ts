@@ -10,7 +10,6 @@ const SupabaseMigrationInput = z.object({
   migrationPath: z.string().min(1).max(500),
   expectedContentHash: z.string().regex(/^[0-9a-f]{64}$/i).optional(),
   allowDestructive: z.boolean().default(false),
-  production: z.boolean().default(false),
 });
 
 export const supabaseApplyGithubMigration = createServerFn({ method: "POST" })
