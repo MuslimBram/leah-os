@@ -1,4 +1,5 @@
-// Keeps deployment records in sync with their orchestrator execution.
+// Keeps local release-shell failures visible. A local execution is not authoritative
+// evidence that a cloud provider deployed anything, so it can never mark succeeded.
 
 import { orchestrator } from "@/lib/core/orchestrator";
 import { deploymentForExecution, listDeployments, setDeploymentStatus } from "./store";
@@ -13,13 +14,13 @@ export function installDeployBootstrap() {
   orchestrator.subscribe(() => {
     if (listDeployments().length === 0) return;
     for (const exec of orchestrator.listExecutions()) {
-      if (exec.status !== "completed" && exec.status !== "failed") continue;
+      if (exec.status !== "failed") continue;
       const deployment = deploymentForExecution(exec.id);
       if (!deployment) continue;
-      const key = `${exec.id}:${exec.status}`;
+      const key = `${exec.id}:failed`;
       if (seen.has(key)) continue;
       seen.add(key);
-      setDeploymentStatus(deployment.id, exec.status === "failed" ? "failed" : "succeeded");
+      setDeploymentStatus(deployment.id, "failed", "Local release preparation failed before provider success");
     }
   });
 }
