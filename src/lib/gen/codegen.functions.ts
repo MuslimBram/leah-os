@@ -3,6 +3,7 @@ import { streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "../ai-gateway.server";
+import { routeProvider, type RouterCandidate, type RouterMode } from "../router/code-router";
 
 const GenInput = z.object({
   kind: z.string(),
@@ -10,6 +11,7 @@ const GenInput = z.object({
   description: z.string().default(""),
   prompt: z.string().default(""),
   role: z.string().default("engineer"),
+  routerMode: z.enum(["economy", "balanced", "quality"]).default("balanced"),
   byok: z
     .object({
       providerId: z.string(),
@@ -55,6 +57,11 @@ function openAiCompatibleProvider(input: z.infer<typeof ProviderTestInput>) {
   });
 }
 
+async function completeText(model: Parameters<typeof streamText>[0]["model"], messages: Array<{ role: "user"; content: string }>) {
+  const result = streamText({ model, system: SYSTEM, messages });
+  return await result.text;
+}
+
 /**
  * Live provider probe. A configured provider is not considered usable until
  * this call returns a non-empty model response from the exact endpoint/model.
@@ -84,8 +91,10 @@ export const generateCode = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => GenInput.parse(input))
   .handler(async ({ data }) => {
     const messages = [{ role: "user" as const, content: buildUserPrompt(data) }];
+    const candidates: RouterCandidate<string>[] = [];
 
-    // 1) BYOK / free OpenAI-compatible endpoint, when the user configured one.
+    // BYOK is preferred in balanced/economy mode because the external provider cost
+    // is owned by the user's key rather than hidden inside LEAH managed compute.
     if (data.byok?.baseUrl) {
       const provider = createOpenAICompatible({
         name: data.byok.providerId,
@@ -93,30 +102,58 @@ export const generateCode = createServerFn({ method: "POST" })
         headers: data.byok.apiKey ? { Authorization: `Bearer ${data.byok.apiKey}` } : {},
       });
       const model = data.byok.model || "gpt-4o-mini";
-      const result = streamText({ model: provider(model), system: SYSTEM, messages });
-      const text = await result.text;
-      if (!text.trim()) throw new Error(`${data.byok.providerId}/${model} returned an empty response`);
-      return { text, provider: data.byok.providerId, model, mock: false };
+      candidates.push({
+        providerId: data.byok.providerId,
+        model,
+        capabilities: ["code", "chat"],
+        costRank: 0,
+        qualityRank: 90,
+        run: () => completeText(provider(model), messages),
+        validate: (text) => text.trim().length > 0,
+      });
     }
 
-    // 2) Managed Lovable AI Gateway.
-    const key = process.env["LOVABLE_API_KEY"];
-    if (key) {
-      const gateway = createLovableAiGatewayProvider(key);
+    const lovableKey = process.env["LOVABLE_API_KEY"];
+    if (lovableKey) {
+      const gateway = createLovableAiGatewayProvider(lovableKey);
       const model = "google/gemini-3.6-flash";
-      const result = streamText({ model: gateway(model), system: SYSTEM, messages });
-      const text = await result.text;
-      if (!text.trim()) throw new Error(`lovable-gateway/${model} returned an empty response`);
-      return { text, provider: "lovable-gateway", model, mock: false };
+      candidates.push({
+        providerId: "lovable-gateway",
+        model,
+        capabilities: ["code", "reasoning", "chat"],
+        costRank: 2,
+        qualityRank: 100,
+        run: () => completeText(gateway(model), messages),
+        validate: (text) => text.trim().length > 0,
+      });
     }
 
-    // 3) Keyless public fallback. This is still a live network call, not a mock.
-    const provider = createOpenAICompatible({
+    const pollinations = createOpenAICompatible({
       name: "pollinations",
       baseURL: "https://text.pollinations.ai/openai",
     });
-    const result = streamText({ model: provider("openai"), system: SYSTEM, messages });
-    const text = await result.text;
-    if (!text.trim()) throw new Error("pollinations/openai returned an empty response");
-    return { text, provider: "pollinations", model: "openai", mock: false };
+    candidates.push({
+      providerId: "pollinations",
+      model: "openai",
+      capabilities: ["code", "chat"],
+      costRank: 0,
+      qualityRank: 60,
+      run: () => completeText(pollinations("openai"), messages),
+      validate: (text) => text.trim().length > 0,
+    });
+
+    const routed = await routeProvider({
+      capability: "code",
+      mode: data.routerMode as RouterMode,
+      candidates,
+    });
+
+    return {
+      text: routed.value,
+      provider: routed.providerId,
+      model: routed.model,
+      mock: false,
+      routerMode: data.routerMode,
+      attempts: routed.attempts.map(({ providerId, model, ok, latencyMs }) => ({ providerId, model, ok, latencyMs })),
+    };
   });
