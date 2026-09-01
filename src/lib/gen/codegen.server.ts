@@ -19,6 +19,12 @@ import {
 } from "../providers/usage-meter.server";
 import { listConfiguredManagedProviders } from "../providers/registry.server";
 import {
+  callPulseByokProvider,
+  listPulseByokProviders,
+  PulseByokProviderError,
+  settlePulseByokAttempt,
+} from "../providers/pulse-provider-proxy.server";
+import {
   ProviderOutcomeUnknownError,
   routeProvider,
   type BillingMode,
@@ -38,7 +44,7 @@ export type RoutedCodeRequest = {
   logicalRequestId?: string;
   /** Server-derived worker authority. Never accept these values from a browser. */
   authority?: AttemptAuthority;
-  /** Conservative output reservation; provider-reported usage replaces it on settlement. */
+  /** Conservative output reservation/estimate; provider-reported usage replaces it. */
   estimatedOutputTokens?: number;
 };
 
@@ -56,6 +62,10 @@ const UNAVAILABLE_USAGE: ProviderUsage = {
   totalTokens: null,
   usageSource: "unavailable",
 };
+
+// When an exact model context limit is not server-configured, MR7 uses a deliberately
+// conservative admission ceiling instead of assuming an unbounded context window.
+const CONSERVATIVE_INPUT_LIMIT = 8_192;
 
 function userPrompt(input: RoutedCodeRequest): string {
   return `Roli: ${input.role ?? "engineer"}
@@ -82,10 +92,20 @@ function outputReservation(input: RoutedCodeRequest): number {
 }
 
 function providerOrder(): string[] {
-  return (process.env["LEAH_MANAGED_PROVIDER_ORDER"] ?? "openai,anthropic,gemini,deepseek,kimi,zai")
+  return (process.env["LEAH_PROVIDER_ORDER"] ?? process.env["LEAH_MANAGED_PROVIDER_ORDER"] ?? "openai,anthropic,gemini,deepseek,kimi,zai")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+}
+
+function validatesGeneratedCode(value: ProviderTextResult): boolean {
+  if (!validateProviderText(value)) return false;
+  try {
+    extractGeneratedFiles(value.text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function managedCandidates(messages: { system: string; user: string }): RouterCandidate<ProviderTextResult>[] {
@@ -101,23 +121,46 @@ function managedCandidates(messages: { system: string; user: string }): RouterCa
       capabilities: ["code", "reasoning", "chat"] as RouterCapability[],
       costRank: 1,
       qualityRank: Math.max(1, 100 - orderRank * 5),
-      maxInputTokens,
+      maxInputTokens: maxInputTokens ?? CONSERVATIVE_INPUT_LIMIT,
       run: () => callConfiguredManagedProvider(entry.id, messages),
-      validate: (value: ProviderTextResult) => {
-        if (!validateProviderText(value)) return false;
-        try {
-          extractGeneratedFiles(value.text);
-          return true;
-        } catch {
-          return false;
-        }
-      },
+      validate: validatesGeneratedCode,
+    };
+  });
+}
+
+async function byokCandidates(
+  authority: AttemptAuthority,
+  messages: { system: string; user: string },
+): Promise<RouterCandidate<ProviderTextResult>[]> {
+  const catalog = await listPulseByokProviders(authority);
+  const order = providerOrder();
+  return catalog.map(({ providerId, model }) => {
+    const index = order.indexOf(providerId);
+    const orderRank = index < 0 ? order.length : index;
+    return {
+      providerId,
+      model,
+      billingMode: "byok" as const,
+      capabilities: ["code", "reasoning", "chat"] as RouterCapability[],
+      costRank: 0,
+      qualityRank: Math.max(1, 100 - orderRank * 5),
+      maxInputTokens: CONSERVATIVE_INPUT_LIMIT,
+      run: (context) => callPulseByokProvider({
+        ...authority,
+        logicalRequestId: context.logicalRequestId,
+        attemptId: context.attemptId,
+        providerId,
+        expectedModel: model,
+        system: messages.system,
+        user: messages.user,
+      }),
+      validate: validatesGeneratedCode,
     };
   });
 }
 
 function errorCode(error: unknown): string {
-  if (error instanceof ProviderHttpError) return error.code;
+  if (error instanceof ProviderHttpError || error instanceof PulseByokProviderError) return error.code;
   if (error instanceof ProviderOutcomeUnknownError) return "outcome_unknown";
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   if (message.includes("invalid or empty result")) return "invalid_generated_output";
@@ -126,17 +169,20 @@ function errorCode(error: unknown): string {
 
 export async function generateCodeRouted(input: RoutedCodeRequest) {
   const billingMode = input.billingMode ?? "managed";
-  if (billingMode === "byok") {
-    throw new Error("BYOK generation requires a Pulse Vault-bound workspace credential");
-  }
   if (!input.authority?.taskId || !input.authority.leaseToken) {
-    throw new Error("Managed generation requires server-derived task lease authority");
+    throw new Error("Provider generation requires server-derived task lease authority");
   }
 
   const authority = input.authority;
   const messages = { system: SYSTEM, user: userPrompt(input) };
-  const candidates = managedCandidates(messages);
-  if (candidates.length === 0) throw new Error("No MR7A managed provider is configured server-side");
+  const candidates = billingMode === "byok"
+    ? await byokCandidates(authority, messages)
+    : managedCandidates(messages);
+  if (candidates.length === 0) {
+    throw new Error(billingMode === "byok"
+      ? "No validated Pulse Vault BYOK provider is available for this task"
+      : "No MR7 managed provider is configured server-side");
+  }
 
   const estimatedInputTokens = roughTokenEstimate(`${SYSTEM}\n${messages.user}`);
   const estimatedOutputTokens = outputReservation(input);
@@ -150,7 +196,7 @@ export async function generateCodeRouted(input: RoutedCodeRequest) {
     logicalRequestId: input.logicalRequestId,
     estimatedInputTokens,
     candidates,
-    lifecycle: {
+    lifecycle: billingMode === "managed" ? {
       beforeAttempt: async ({ logicalRequestId, attemptId, candidate }) => {
         const reservation = await reserveManagedTokens({
           ...authority,
@@ -220,6 +266,27 @@ export async function generateCodeRouted(input: RoutedCodeRequest) {
         } else {
           await releaseManagedReservation({ ...authority, reservationId: reservation.id });
         }
+      },
+    } : {
+      // Pulse proxy itself creates the durable attempt row before provider dispatch.
+      // A known provider failure/unknown outcome is settled by Pulse. A successful
+      // response is settled here only after LEAH's canonical generated-file validation.
+      afterAttempt: async (settlement) => {
+        if (!settlement.value) return;
+        await settlePulseByokAttempt({
+          ...authority,
+          attemptId: settlement.attemptId,
+          outcome: settlement.status === "succeeded" ? "succeeded" : "failed",
+          value: settlement.value,
+          latencyMs: settlement.latencyMs,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          errorCode: settlement.status === "succeeded" ? null : errorCode(settlement.error),
+          metadata: {
+            logical_request_id: settlement.logicalRequestId,
+            generated_output_valid: settlement.status === "succeeded",
+          },
+        });
       },
     },
   });
