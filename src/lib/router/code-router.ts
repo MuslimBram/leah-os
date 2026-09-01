@@ -30,12 +30,33 @@ export type RouterAttempt = {
   error?: string;
 };
 
+export type RouterAttemptContext<T> = {
+  logicalRequestId: string;
+  attemptId: string;
+  candidate: RouterCandidate<T>;
+};
+
+export type RouterAttemptSettlement<T> = RouterAttemptContext<T> & {
+  status: RouterAttemptStatus;
+  latencyMs: number;
+  value?: T;
+  error?: unknown;
+};
+
+export type RouterAttemptLifecycle<T> = {
+  /** Runs before the outbound provider call. Failure is terminal and no provider call is made. */
+  beforeAttempt?: (context: RouterAttemptContext<T>) => Promise<void>;
+  /** Must persist the terminal attempt truth. Failure is terminal; fallback is not allowed. */
+  afterAttempt?: (settlement: RouterAttemptSettlement<T>) => Promise<void>;
+};
+
 export type RouterResult<T> = {
   logicalRequestId: string;
   value: T;
   providerId: string;
   model: string;
   billingMode: BillingMode;
+  canonicalAttemptId: string;
   attempts: RouterAttempt[];
 };
 
@@ -88,6 +109,7 @@ export async function routeProvider<T>(input: {
   maxAttempts?: number;
   estimatedInputTokens?: number;
   candidates: RouterCandidate<T>[];
+  lifecycle?: RouterAttemptLifecycle<T>;
 }): Promise<RouterResult<T>> {
   const mode = input.mode ?? "balanced";
   const logicalRequestId = input.logicalRequestId ?? newId();
@@ -121,31 +143,26 @@ export async function routeProvider<T>(input: {
   for (const candidate of eligible) {
     if (attempts.length >= maxAttempts) break;
 
-    const startedAt = Date.now();
     const attemptId = newId();
+    const context: RouterAttemptContext<T> = { logicalRequestId, attemptId, candidate };
     try {
-      const value = await candidate.run();
-      if (!candidate.validate(value)) throw new Error("Provider returned an invalid or empty result");
-      attempts.push({
-        attemptId,
-        providerId: candidate.providerId,
-        model: candidate.model,
-        billingMode: candidate.billingMode,
-        status: "succeeded",
-        ok: true,
-        latencyMs: Date.now() - startedAt,
-      });
-      return {
+      await input.lifecycle?.beforeAttempt?.(context);
+    } catch (error) {
+      throw new RouterTerminalError(
+        `Provider attempt admission/evidence start failed before outbound call: ${publicFailure(error)}`,
         logicalRequestId,
-        value,
-        providerId: candidate.providerId,
-        model: candidate.model,
-        billingMode: candidate.billingMode,
         attempts,
-      };
+      );
+    }
+
+    const startedAt = Date.now();
+    let value: T;
+    try {
+      value = await candidate.run();
+      if (!candidate.validate(value)) throw new Error("Provider returned an invalid or empty result");
     } catch (error) {
       const unknown = error instanceof ProviderOutcomeUnknownError;
-      attempts.push({
+      const attempt: RouterAttempt = {
         attemptId,
         providerId: candidate.providerId,
         model: candidate.model,
@@ -154,7 +171,23 @@ export async function routeProvider<T>(input: {
         ok: false,
         latencyMs: Date.now() - startedAt,
         error: publicFailure(error),
-      });
+      };
+      attempts.push(attempt);
+
+      try {
+        await input.lifecycle?.afterAttempt?.({
+          ...context,
+          status: attempt.status,
+          latencyMs: attempt.latencyMs,
+          error,
+        });
+      } catch (settlementError) {
+        throw new RouterTerminalError(
+          `Provider attempt evidence settlement failed; fallback blocked: ${publicFailure(settlementError)}`,
+          logicalRequestId,
+          attempts,
+        );
+      }
 
       // A timeout/connection-loss can still mean the provider completed and billed.
       // Falling back here could double-spend and later double-materialize output.
@@ -165,7 +198,44 @@ export async function routeProvider<T>(input: {
           attempts,
         );
       }
+      continue;
     }
+
+    const attempt: RouterAttempt = {
+      attemptId,
+      providerId: candidate.providerId,
+      model: candidate.model,
+      billingMode: candidate.billingMode,
+      status: "succeeded",
+      ok: true,
+      latencyMs: Date.now() - startedAt,
+    };
+    attempts.push(attempt);
+
+    try {
+      await input.lifecycle?.afterAttempt?.({
+        ...context,
+        status: "succeeded",
+        latencyMs: attempt.latencyMs,
+        value,
+      });
+    } catch (settlementError) {
+      throw new RouterTerminalError(
+        `Provider succeeded but evidence settlement failed; materialization blocked: ${publicFailure(settlementError)}`,
+        logicalRequestId,
+        attempts,
+      );
+    }
+
+    return {
+      logicalRequestId,
+      value,
+      providerId: candidate.providerId,
+      model: candidate.model,
+      billingMode: candidate.billingMode,
+      canonicalAttemptId: attemptId,
+      attempts,
+    };
   }
 
   const summary = attempts.map((a) => `${a.providerId}/${a.model}: ${a.error ?? a.status}`).join("; ");
