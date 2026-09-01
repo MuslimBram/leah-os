@@ -29,6 +29,45 @@ async function routed(mode: BillingMode, candidates: RouterCandidate<string>[]) 
 }
 
 describe("AI provider router", () => {
+  it("passes the exact canonical logical/attempt IDs into provider dispatch", async () => {
+    let dispatchLogical = "";
+    let dispatchAttempt = "";
+    let beforeLogical = "";
+    let beforeAttempt = "";
+    let afterAttempt = "";
+
+    const result = await routeProvider({
+      capability: "code",
+      billingMode: "byok",
+      logicalRequestId: "11111111-1111-4111-8111-111111111111",
+      candidates: [candidate({
+        providerId: "openai",
+        model: "test",
+        billingMode: "byok",
+        run: async (context) => {
+          dispatchLogical = context.logicalRequestId;
+          dispatchAttempt = context.attemptId;
+          return "generated";
+        },
+      })],
+      lifecycle: {
+        beforeAttempt: async (context) => {
+          beforeLogical = context.logicalRequestId;
+          beforeAttempt = context.attemptId;
+        },
+        afterAttempt: async (context) => {
+          afterAttempt = context.attemptId;
+        },
+      },
+    });
+
+    expect(dispatchLogical).toBe(result.logicalRequestId);
+    expect(beforeLogical).toBe(result.logicalRequestId);
+    expect(dispatchAttempt).toBe(result.canonicalAttemptId);
+    expect(beforeAttempt).toBe(result.canonicalAttemptId);
+    expect(afterAttempt).toBe(result.canonicalAttemptId);
+  });
+
   it("filters providers that do not support the requested capability", async () => {
     const result = await routed("managed", [
       candidate({ providerId: "chat-only", model: "chat", capabilities: ["chat"], qualityRank: 100, run: async () => "wrong" }),
